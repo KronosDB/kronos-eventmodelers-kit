@@ -1,0 +1,6 @@
+{
+  "label": "Kronos (kronos-ts on Bun, oRPC, Drizzle — KronosDB + Postgres)",
+  "kitSubdir": "build-kit",
+  "useShared": true,
+  "needsBoardId": true
+}
