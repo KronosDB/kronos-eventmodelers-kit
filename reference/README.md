@@ -32,10 +32,13 @@ endpoint's contract as a UI build kit reads it.
 Every message says who it is from: `actor` and `actorType` in its metadata, carried with the correlation id onto
 the events it causes. An automation acts as itself: what it sends carries its processor's name and
 `actorType: "automation"`, and whoever started the chain is found by the correlation id. A chain nothing outside
-started is the `system`'s. The app
-does not decide how its users authenticate: every request is anonymous until `main.ts` gives `serve` an
-`identify(request)` that reads your session cookie or bearer token and answers `{ actor, actorType }`. To require a signed-in caller, add an oRPC middleware to
-the procedures that need one; to refuse a message however it arrives, add a handler wrapper to `src/app.ts`. A rule
+started is the `system`'s.
+
+How your users authenticate is yours to decide, in one file: `src/app/auth.ts`. Its `identify(request)` reads your
+session cookie or bearer token and answers `{ actor, actorType }`; until you fill it in, every request is anonymous.
+Its `signedIn` middleware is for a procedure only a signed-in caller may use (`impl.account.use(signedIn)`); anyone
+else gets the edge's 401 problem, and a 403 from a middleware of your own reads the same. To refuse a message
+however it arrives (HTTP, another instance, an automation), add a handler wrapper to `src/app.ts`. A rule
 about the data ("only the owner may…") is a rejection in the slice, from the board.
 
 ## Running it in production

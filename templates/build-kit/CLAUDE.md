@@ -322,13 +322,16 @@ nothing outside started is the `system`'s. A slice never stamps or changes them;
 command and events to carry `{ actor: "<processor name>", actorType: "automation" }`.
 
 The kit does not decide how an app authenticates, and slice work never adds authentication: no token parsing, no
-session lookup, no `identify` in a slice. The edge has one seam for it, `serve(…, { identify })` in `main.ts`: a
-function of the request (a session cookie, a bearer token) answering `{ actor, actorType }`, or nothing (anonymous).
-A header the client sets is never taken as an identity.
+session lookup, no `identify` in a slice. The app decides it in one file, `src/app/auth.ts`: `identify(request)`
+answers `{ actor, actorType }`, or nothing (anonymous), and is anonymous for everyone until the app fills it in. A
+header the client sets is never taken as an identity.
 
 Once an app has decided how it authenticates, there are two places to refuse a caller:
-- **who may call an endpoint at all** (signed in, say): an oRPC middleware on the procedure, reading
-  `context.actorType` and throwing `new ORPCError("UNAUTHORIZED")` (answered 401) before `next()`;
+- **who may call an endpoint at all** (signed in, say): an oRPC middleware on the procedure. `auth.ts` has one,
+  `signedIn`: `impl.<procedure>.use(signedIn).handler(…)` answers anyone not signed in with the edge's 401
+  problem. Use it in a controller when the board says the caller is a signed-in member (a screen behind a login, a
+  field that is "the current user"), and record the choice with `info --kind decision`; a caller who is known but
+  may not do this is a `FORBIDDEN` (403) from a middleware the app adds in `auth.ts`;
 - **who may send a message, however it arrives** (HTTP, another instance, an automation): a handler wrapper in
   `app.ts`'s pipe reading `actorOf(message.metadata)`, beside `validatingHandler`. An automation's commands arrive as
   the automation's, never as the user's.

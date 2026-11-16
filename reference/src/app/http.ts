@@ -242,14 +242,30 @@ const found = (is: (error: unknown) => boolean, error: unknown): boolean =>
   is(error) || (error instanceof ORPCError && found(is, error.cause))
 
 /**
- * The two failures a caller handles differently, as kronos-ts names them for every store and bus, on this instance
- * or on another one the command ran on:
+ * The failures any endpoint can answer, each a problem of the edge's own:
+ * - unauthorized: the procedure needs a signed-in caller and this one is not (`signedIn`, src/app/auth.ts): 401;
+ * - forbidden: the caller is known but may not call this (a middleware of the app's own): 403;
  * - a conflict: the append lost a race (another writer changed what the decision read). Nothing is wrong with the
  *   request: 409, and the caller sends it again (it carries its own id and lands once);
  * - unavailable: a store or bus could not be reached, is overloaded or shutting down: 503, and the caller tries later.
- * Anything else that is not a rejection stays oRPC's 500.
+ * Conflict and unavailable are recognised as kronos-ts names them for every store and bus, on this instance or on
+ * another one the command ran on. Anything else that is not a rejection stays oRPC's 500.
  */
 const failures = [
+  {
+    is: (error: unknown) => error instanceof ORPCError && error.code === "UNAUTHORIZED",
+    code: "UNAUTHORIZED",
+    status: 401,
+    title: "Not signed in",
+    detail: "This needs a signed-in caller. Sign in, then send the request again.",
+  },
+  {
+    is: (error: unknown) => error instanceof ORPCError && error.code === "FORBIDDEN",
+    code: "FORBIDDEN",
+    status: 403,
+    title: "Not allowed",
+    detail: "The caller may not do this.",
+  },
   {
     is: isConflict,
     code: "CONFLICT",

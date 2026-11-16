@@ -22,6 +22,7 @@ import { openapi } from "@orpc/openapi"
 import { implement } from "@orpc/server"
 import { z } from "zod"
 import { app } from "../app"
+import { signedIn } from "./auth"
 import { CORRELATION_HEADER, serve } from "./http"
 
 // The edge's correlation id and a rejection's problem document, through the real HTTP edge and the app's own wiring
@@ -63,9 +64,12 @@ const contract = {
     .errors(echoProblems.errors)
     .input(z.object({ pingId: z.string() }))
     .output(z.object({})),
+  // Only for a signed-in caller (`signedIn`): who the edge says is asking.
+  whoami: oc.meta(openapi({ method: "GET", path: "/whoami" })).output(z.object({ actor: z.string() })),
 }
 const ping = {
   router: {
+    whoami: implement(contract).$context<Edge>().whoami.use(signedIn).handler(({ context }) => ({ actor: context.actor })),
     ping: implement(contract).$context<Edge>().ping.handler(async (call) => {
       const answer = await call.context.send(Ping, call.input)
       if (!answer.ok) throw refuse(call, pingProblems, answer)
@@ -328,4 +332,26 @@ it("documents one refusal as one schema, its data the document as sent: type, st
   expect(data.examples[0]).toMatchObject({ type: "/problems/ping/ping-silenced", status: 422, pingId: "…" })
   // A fact is described by the contract that words the rejection, not by the domain that declares it.
   expect(data.properties.pingId).toMatchObject({ type: "string", description: "The ping that was silenced." })
+})
+
+it("answers a procedure only a signed-in caller may use with the edge's 401 problem for anyone else", async () => {
+  const identified = await serve(running, ping, {
+    log,
+    port: 0,
+    identify: (request) =>
+      request.headers.get("authorization") === "Bearer t-1" ? { actor: "member-1", actorType: "user" } : undefined,
+  })
+  try {
+    const anonymous = await fetch(new URL("/whoami", identified.url), { headers: { "x-correlation-id": "req-9" } })
+    expect(anonymous.status).toBe(401)
+    expect(await anonymous.json()).toMatchObject({
+      code: "UNAUTHORIZED",
+      data: { type: "/problems/unauthorized", status: 401, title: "Not signed in", instance: "req-9" },
+    })
+    const member = await fetch(new URL("/whoami", identified.url), { headers: { authorization: "Bearer t-1" } })
+    expect(member.status).toBe(200)
+    expect(await member.json()).toEqual({ actor: "member-1" })
+  } finally {
+    await identified.stop()
+  }
 })

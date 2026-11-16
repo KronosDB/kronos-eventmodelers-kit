@@ -25,6 +25,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator"
 import postgres from "postgres"
 import { app } from "./app"
 import { serve } from "./app/http"
+import { identify } from "./app/auth"
 import { env } from "./env"
 import { router, statuses } from "./slices"
 
@@ -115,8 +116,8 @@ const server = await serve(running, { router, statuses }, {
   port: env.PORT,
   // The API reference at /docs: in development, unless API_DOCS says otherwise.
   docs: env.API_DOCS ?? env.NODE_ENV === "development",
-  // Who is asking: give `serve` an `identify(request)` that reads your session cookie or bearer token. Without one,
-  // every request is anonymous (see "Who is asking" in .build-kit/CLAUDE.md).
+  // Who is asking, and who may call what: src/app/auth.ts, the one place the app decides it.
+  identify,
 })
 log.info("listening", { url: String(server.url), events: `KronosDB ${context}`, tracing: exporter ? env.OTEL_EXPORTER_OTLP_ENDPOINT : "off" })
 

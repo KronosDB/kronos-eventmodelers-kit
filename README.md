@@ -21,8 +21,9 @@ Once the stack ships with the CLI, `--git` is no longer needed: `init --stack kr
 - **Rebuilding a slice:** a slice set back to Planned whose model has not changed is found `UNCHANGED` by the
   baseline gate: its specs run and it is done again, with no rebuild. To rebuild it anyway, delete its folder under
   `src/slices/` first.
-- **Sessions are the app's:** the kit builds no authentication. The edge has one seam for it, `identify(request)`;
-  see "Who is asking" in the starter's README.
+- **Sessions are the app's:** the kit builds no authentication. The app decides it in `src/app/auth.ts`: who is
+  asking (`identify`, anonymous until filled in) and a `signedIn` middleware for procedures that need a signed-in
+  caller. See "Who is asking" in the starter's README.
 - **Deploying:** the starter has a `Dockerfile` for the app; KronosDB and Postgres are yours to run.
 
 ## What is in this repo
@@ -83,8 +84,8 @@ only they use), with the HTTP-only
 `router` and `statuses` beside them; they never enter `app()`. `src/app/http.ts` serves the router and takes its buses off
 the app, with the OpenAPI document at `/openapi.json` and its reference (Scalar) at `/docs`: in development, or
 with `API_DOCS=true`. Every refusal is an RFC 9457 problem document whose `type` belongs to the message that refuses
-(`/problems/add-item/cart-full`), and opens its row in the reference. Who is asking comes from `identify(request)`,
-a seam the app fills in (anonymous until then): `actor` and `actorType` go on the request's message, and `app.ts`
+(`/problems/add-item/cart-full`), and opens its row in the reference. Who is asking comes from `identify(request)`
+in `src/app/auth.ts`, which the app fills in (anonymous until then): `actor` and `actorType` go on the request's message, and `app.ts`
 carries them with the correlation onto the events it causes. An automation acts as itself (`actorType: "automation"`,
 its processor's name), with the user one correlation away. A command whose append lost a race is answered 409 there, recognised with core's `isConflict` also when
 the command ran on another instance; a store or bus that cannot be reached is answered 503 (`isUnavailable`).
