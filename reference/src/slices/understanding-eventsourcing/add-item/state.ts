@@ -6,9 +6,8 @@ import { CartCleared, CartCreated, ItemAdded, ItemArchived, ItemRemoved } from "
 export const Cart = state({
   id: { aggregateId: z.uuid() },
   tags: (id) => ({ aggregateId: id.aggregateId }),
-  // biome-ignore format: keep event names and evolver signatures together
   evolve: [
-    () => ({ created: false, items: [] as string[] }),
+    (): { created: boolean; items: string[] } => ({ created: false, items: [] }),
     [CartCreated, (s) => ({ ...s, created: true })],
     [ItemAdded, (s, { payload }) => ({ ...s, items: [...s.items, payload.itemId] })],
     [ItemRemoved, (s, { payload }) => ({ ...s, items: s.items.filter((id) => id !== payload.itemId) })],

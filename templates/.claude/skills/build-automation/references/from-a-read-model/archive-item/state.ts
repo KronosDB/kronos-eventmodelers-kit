@@ -8,7 +8,6 @@ type Items = { items: { itemId: string; productId: string }[] }
 export const CartProducts = state({
   id: { aggregateId: z.uuid() },
   tags: (id) => ({ aggregateId: id.aggregateId }),
-  // biome-ignore format: keep event names and evolver signatures together
   evolve: [
     (): Items => ({ items: [] }),
     [ItemAdded, (s, { payload }) => ({ items: [...s.items, { itemId: payload.itemId, productId: payload.productId }] })],
