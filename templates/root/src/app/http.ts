@@ -21,7 +21,7 @@ type Problem = {
   json: Record<string, unknown>
 }
 
-/** What a problem's description says, split back into its parts (`errorsOf` writes them in this order). */
+/** What a problem's description says, split back into its parts (`problemsOf` writes them in this order). */
 function partsOf(description: string) {
   const [happened = "", ...rest] = description.split("\n\n")
   const part = (label: string) => rest.find((r) => r.startsWith(`${label}: `))?.slice(label.length + 2)
@@ -324,7 +324,7 @@ export async function describe(routes: { router: AnyRouter; statuses: Readonly<R
     customErrorResponseBodySchema: (definitions, status) => {
       if (!definitions.every((d) => statuses[d.code] !== undefined)) return undefined
       const variants = definitions.map(({ code, dataJsonSchema }) => {
-        // The rejection's data (`errorsOf`), with the `status` the edge adds beside its `type`: one object, as sent.
+        // The rejection's data (`problemsOf`), with the `status` the edge adds beside its `type`: one object, as sent.
         const data = dataJsonSchema as {
           description?: string
           properties?: Record<string, typeof dataJsonSchema>
@@ -334,7 +334,7 @@ export async function describe(routes: { router: AnyRouter; statuses: Readonly<R
         const { type, ...properties } = data.properties ?? {}
         return {
           title: code,
-          // The rejection's own words (`errorsOf` puts them on its data), so each refusal is explained.
+          // The rejection's own words (`problemsOf` puts them on its data), so each refusal is explained.
           ...(typeof data.description === "string" ? { description: data.description } : {}),
           type: "object" as const,
           properties: {

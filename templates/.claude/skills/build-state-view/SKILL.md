@@ -50,8 +50,9 @@ screen only; the automation keeps its own. A storyline example is the last spec 
    or automation asks by, recorded with `info --kind decision`), each typed from the type table: an id is `z.uuid()`,
    so a malformed one is refused before the handler runs, and the handler never checks it. Result = the read model's fields. A list read model
    (`listElement`, or several rows per id) answers `{ items: [...] }`. An unknown id answers the empty read model,
-   not a rejection, unless a specification says otherwise — then the rejection is declared in `query.ts`, the
-   procedure declares `.errors(errorsOf(<Query>))`, its controller throws `refuse(call, <Query>, result)`, and
+   not a rejection, unless a specification says otherwise — then the rejection (code and facts) is declared in
+   `query.ts`, worded in `contract.ts` (`problems = problemsOf(<Query>, {…})`), the procedure declares
+   `.errors(problems.errors)`, its controller throws `refuse(call, problems, result)`, and
    `contract.ts` exports `statuses = statusesOf(<Query>, { CODE: 404 })` (listed in `index.ts`).
 2. **Table.** One row per thing the read model lists, keyed so every write is absolute: insert with
    `onConflictDoNothing()` / upsert, delete by key. Never increment: an event can be delivered twice.
@@ -69,11 +70,14 @@ screen only; the automation keeps its own. A storyline example is the last spec 
    (`{ change: "added", item }`, `{ change: "removed", itemId }`), declared as `<Name>Update` in `query.ts`.
 4. **Handler.** One `select` through `ctx.db` (typed `QueryContext`), mapped to the result.
 5. **Migration.** `bun run db:generate`, and commit the file it writes to `migrations/`.
-6. **Contract and controller.** Request = `<Query>.payload`, Response = `<Query>.result.success`, both adjusted with
-   `.omit`/`.pick`/`.extend` only where the API differs, never restated. `GET` at `apiEndpoint` or
+6. **Contract and controller.** Request = `documented(<Query>.payload, {…})`, Response =
+   `documented(<Query>.result.success, {…})`, both adjusted with `.omit`/`.pick`/`.extend` first, only where the API
+   differs, never restated. `GET` at `apiEndpoint` or
    `/<context>/<slice>`, with `summary`, `description` and `tags: ["<Slice Title>"]` (the stream shares the tag, and
-   its description says what each update looks like). Every payload and result field carries
-   `.meta({ description, examples })` from the board, in `query.ts`. The
+   its description says what each update looks like). Every Request and Response field gets its description and
+   examples from the board in `documented`, and a field holding objects documents theirs under `fields`; `query.ts`
+   stays types only. A stream's update schemas are documented the same way (`references/example/cart-items/contract.ts`
+   words an item once and uses it in the Response and the stream). The
    controller is `implement(contract).$context<Edge>()` and answers `context.query(...)` without `ok`. A live view adds
    `<camelName>Stream`: `GET <the same path>/stream`, the same input, output `eventIterator(StreamEvent)` where
    `StreamEvent` is the snapshot (`{ change: "snapshot", <view>: Response }`) or an update. Its controller is an
@@ -109,6 +113,7 @@ then print again.
 ## Done when
 
 - [ ] every read-model field is in the result and the Response, and nothing else is
+- [ ] `query.ts` holds types only; every Request, Response and stream field is documented in `contract.ts`
 - [ ] every INBOUND event has a projection handler, and every write is safe to repeat
 - [ ] the migration is generated and committed
 - [ ] every specification is an `it(...)`

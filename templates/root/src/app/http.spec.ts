@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, it } from "bun:test"
-import { correlationIdOf, type Edge, errorsOf, pipe, refuse, rejection, result, type Slice, statusesOf } from "#kit"
+import { correlationIdOf, type Edge, pipe, problemsOf, refuse, rejection, result, type Slice, statusesOf } from "#kit"
 import {
   AppendConditionError,
   commandHandler,
@@ -27,45 +27,40 @@ import { CORRELATION_HEADER, serve } from "./http"
 // The edge's correlation id and a rejection's problem document, through the real HTTP edge and the app's own wiring
 // (in memory, no Docker), with a slice of its own so the spec does not depend on the app's slices.
 const ns = withNamespace("edge-spec")
-const Ping = ns.command("Ping", {
-  payload: z.object({ pingId: z.string() }),
-  result: result(
-    {},
-    rejection("PING_SILENCED", {
-      facts: { pingId: z.string() },
-      title: "The ping is silenced",
-      detail: (f) => `Ping ${f.pingId} is silenced.`,
-      happened: "The ping was not recorded, because it is silenced.",
-      causes: ["The ping id starts with `silent`."],
-      resolution: ["Ping with another id."],
-    }),
-  ),
-})
+const Ping = ns.command("Ping", { payload: z.object({ pingId: z.string() }), result: result({}, rejection("PING_SILENCED", { pingId: z.string() })) })
 // Another message refusing with the same code: a problem of its own, in its own words.
-const Echo = ns.command("Echo", {
-  payload: z.object({ pingId: z.string() }),
-  result: result(
-    {},
-    rejection("PING_SILENCED", {
-      facts: { pingId: z.string() },
-      title: "Echoes are off",
-      detail: (f) => `Ping ${f.pingId} is not echoed: echoes are off.`,
-      happened: "Nothing was echoed, because echoes are off.",
-      causes: ["Echoes were turned off."],
-      resolution: ["Turn echoes on."],
-    }),
-  ),
+const Echo = ns.command("Echo", { payload: z.object({ pingId: z.string() }), result: result({}, rejection("PING_SILENCED", { pingId: z.string() })) })
+// The contract's words on each: the domain declares only the code and its facts.
+const pingProblems = problemsOf(Ping, {
+  PING_SILENCED: {
+    title: "The ping is silenced",
+    detail: (f) => `Ping ${f.pingId} is silenced.`,
+    happened: "The ping was not recorded, because it is silenced.",
+    causes: ["The ping id starts with `silent`."],
+    resolution: ["Ping with another id."],
+    facts: { pingId: { description: "The ping that was silenced." } },
+  },
+})
+const echoProblems = problemsOf(Echo, {
+  PING_SILENCED: {
+    title: "Echoes are off",
+    detail: (f) => `Ping ${f.pingId} is not echoed: echoes are off.`,
+    happened: "Nothing was echoed, because echoes are off.",
+    causes: ["Echoes were turned off."],
+    resolution: ["Turn echoes on."],
+    facts: { pingId: { description: "The ping that was not echoed." } },
+  },
 })
 const Pinged = ns.event("Pinged", { payload: z.object({ pingId: z.string() }), tags: { pingId: (p) => p.pingId } })
 const contract = {
   ping: oc
     .meta(openapi({ method: "POST", path: "/ping" }))
-    .errors(errorsOf(Ping))
+    .errors(pingProblems.errors)
     .input(z.object({ pingId: z.string() }))
     .output(z.object({})),
   echo: oc
     .meta(openapi({ method: "POST", path: "/echo" }))
-    .errors(errorsOf(Echo))
+    .errors(echoProblems.errors)
     .input(z.object({ pingId: z.string() }))
     .output(z.object({})),
 }
@@ -73,12 +68,12 @@ const ping = {
   router: {
     ping: implement(contract).$context<Edge>().ping.handler(async (call) => {
       const answer = await call.context.send(Ping, call.input)
-      if (!answer.ok) throw refuse(call, Ping, answer)
+      if (!answer.ok) throw refuse(call, pingProblems, answer)
       return {}
     }),
     echo: implement(contract).$context<Edge>().echo.handler(async (call) => {
       const answer = await call.context.send(Echo, call.input)
-      if (!answer.ok) throw refuse(call, Echo, answer)
+      if (!answer.ok) throw refuse(call, echoProblems, answer)
       return {}
     }),
   },
@@ -331,4 +326,6 @@ it("documents one refusal as one schema, its data the document as sent: type, st
   expect(Object.keys(data.properties).slice(0, 3)).toEqual(["type", "status", "title"])
   expect(data.properties.type).toEqual({ const: "/problems/ping/ping-silenced", type: "string" })
   expect(data.examples[0]).toMatchObject({ type: "/problems/ping/ping-silenced", status: 422, pingId: "…" })
+  // A fact is described by the contract that words the rejection, not by the domain that declares it.
+  expect(data.properties.pingId).toMatchObject({ type: "string", description: "The ping that was silenced." })
 })

@@ -1,9 +1,40 @@
 import { z } from "zod"
+import { type DocsOf, documentedShape } from "./documented"
 import type { Rejection } from "./result"
+
+// Plain data and zod: a slice's contract.ts words its rejections with these, so it reaches the browser.
 
 /** A command or query descriptor whose result declares its rejections (`result(success, ...rejections)`). */
 type Refusing = { readonly name: { readonly name: string }; readonly result?: { readonly rejections: readonly Rejection[] } }
-type CodeOf<D extends Refusing> = NonNullable<D["result"]>["rejections"][number]["code"]
+type RejectionOf<D extends Refusing> = NonNullable<D["result"]>["rejections"][number]
+type CodeOf<D extends Refusing> = RejectionOf<D>["code"]
+
+/** How the API words one rejection: what it is called, this case from its facts, and what each fact means. */
+export type Wording<R extends Rejection = Rejection> = {
+  /** Short and constant: what the rejection is called. */
+  readonly title: string
+  /** This case, in a sentence, from its facts. (A method, so any wording fits `Wording`.) */
+  detail(facts: z.infer<z.ZodObject<R["facts"]>>): string
+  /** What happened: the rule that was not met. */
+  readonly happened: string
+  /** The situations that lead here. */
+  readonly causes: readonly string[]
+  /** How to resolve it, or avoid it next time. */
+  readonly resolution: readonly string[]
+  /** What each fact means to a caller, and an example: every fact, no more. */
+  readonly facts: DocsOf<R["facts"]>
+}
+
+/** A wording for every rejection a descriptor declares, keyed by code: no more, no fewer. */
+export type WordingOf<D extends Refusing> = { readonly [C in CodeOf<D>]: Wording<Extract<RejectionOf<D>, { code: C }>> }
+
+/** A descriptor's rejections as the API presents them: what `.errors(…)` declares and what `refuse` throws. */
+export type Problems<D extends Refusing = Refusing> = {
+  readonly descriptor: D
+  readonly wording: Readonly<Record<string, Wording>>
+  /** The contract's `.errors(…)`. */
+  readonly errors: { [K in CodeOf<D>]: { message: string; data: z.ZodObject } }
+}
 
 const kebab = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").replaceAll("_", "-").toLowerCase()
 
@@ -52,43 +83,58 @@ function exampleOf(schema: Record<string, unknown>): unknown {
 }
 
 /** A rejection's data as a client receives it, with example facts: what the API reference shows for it. */
-function exampleDataOf(type: string, r: Rejection): Record<string, unknown> {
-  const facts = exampleOf(z.toJSONSchema(z.object(r.facts)) as Record<string, unknown>) as Record<string, unknown>
-  const detail = r.detail(facts as never)
-  const { title, happened, causes, resolution } = r
-  return { type, title, detail, instance: "0192f3a0-0000-7000-8000-0000000000aa", happened, causes, resolution, ...facts }
+function exampleDataOf(type: string, facts: z.ZodRawShape, w: Wording): Record<string, unknown> {
+  const example = exampleOf(z.toJSONSchema(z.object(facts)) as Record<string, unknown>) as Record<string, unknown>
+  const detail = w.detail(example as never)
+  const { title, happened, causes, resolution } = w
+  return { type, title, detail, instance: "0192f3a0-0000-7000-8000-0000000000aa", happened, causes, resolution, ...example }
 }
 
 /**
- * A contract's `.errors(…)`: one per rejection the descriptor declares, its data the rejection's problem type, words
- * and facts and the request's correlation id as `instance`. Protocol-neutral: what a rejection is worth over HTTP is
- * `statusesOf`.
+ * The contract's words on a descriptor's rejections: for each code, its title, its explanation and what each of its
+ * facts means. It does not compile unless every rejection the domain declares has a wording, and every fact a doc.
+ * `.errors` is the contract's `.errors(…)`: each rejection's data is its problem type, words and documented facts, and
+ * the request's correlation id as `instance`. Protocol-neutral: what a rejection is worth over HTTP is `statusesOf`.
+ *
+ *   export const problems = problemsOf(AddItem, {
+ *     CART_FULL: {
+ *       title: "The cart is full",
+ *       detail: (f) => `Cart ${f.aggregateId} already holds ${f.items} items, the most a cart can hold.`,
+ *       happened: "…", causes: ["…"], resolution: ["…"],
+ *       facts: { aggregateId: { description: "The cart.", examples: ["0192…"] }, items: { description: "…", examples: [3] } },
+ *     },
+ *   })
  */
-export function errorsOf<const D extends Refusing>(descriptor: D) {
-  const errors = (descriptor.result?.rejections ?? []).map((r) => [
-    r.code,
-    {
-      message: r.title,
-      data: z
-        .object({
-          type: z.literal(problemTypeOf(descriptor, r.code)),
-          title: z.literal(r.title),
-          detail: z.string(),
-          instance: z.string(),
-          happened: z.string(),
-          causes: z.array(z.string()),
-          resolution: z.array(z.string()),
-          ...r.facts,
-        })
-        // The rejection's own words, so the API reference explains each refusal, not just its title.
-        .meta({
-          title: r.title,
-          description: [r.happened, `Causes: ${r.causes.join(" ")}`, `Resolution: ${r.resolution.join(" ")}`].join("\n\n"),
-          examples: [exampleDataOf(problemTypeOf(descriptor, r.code), r)],
-        }),
-    },
-  ])
-  return Object.fromEntries(errors) as { [K in CodeOf<D>]: { message: string; data: z.ZodObject } }
+export function problemsOf<const D extends Refusing>(descriptor: D, wording: WordingOf<D>): Problems<D> {
+  const words = wording as unknown as Readonly<Record<string, Wording>>
+  const errors = (descriptor.result?.rejections ?? []).map((r) => {
+    const w = words[r.code]!
+    const facts = documentedShape(r.facts, w.facts as never)
+    return [
+      r.code,
+      {
+        message: w.title,
+        data: z
+          .object({
+            type: z.literal(problemTypeOf(descriptor, r.code)),
+            title: z.literal(w.title),
+            detail: z.string(),
+            instance: z.string(),
+            happened: z.string(),
+            causes: z.array(z.string()),
+            resolution: z.array(z.string()),
+            ...facts,
+          })
+          // The rejection's own words, so the API reference explains each refusal, not just its title.
+          .meta({
+            title: w.title,
+            description: [w.happened, `Causes: ${w.causes.join(" ")}`, `Resolution: ${w.resolution.join(" ")}`].join("\n\n"),
+            examples: [exampleDataOf(problemTypeOf(descriptor, r.code), facts, w)],
+          }),
+      },
+    ]
+  })
+  return { descriptor, wording: words, errors: Object.fromEntries(errors) as Problems<D>["errors"] }
 }
 
 /**
@@ -102,8 +148,8 @@ export const statusesOf = <
 >(_descriptor: D, statuses: S): Readonly<Record<string, number>> => statuses
 
 /**
- * What the domain answered, as the contract's declared error, to throw from a controller:
- * `if (!result.ok) throw refuse(call, AddItem, result)`.
+ * What the domain answered, as the contract's declared error, worded as the contract words it, to throw from a
+ * controller: `if (!result.ok) throw refuse(call, problems, result)`.
  */
 export function refuse<D extends Refusing>(
   call: {
@@ -111,15 +157,15 @@ export function refuse<D extends Refusing>(
     readonly errors: { readonly [K in CodeOf<D>]: (options: { message: string; data: any }) => Error }
     readonly context: { readonly correlationId: string }
   },
-  descriptor: D,
+  problems: Problems<D>,
   answer: { readonly ok: false; readonly rejection: CodeOf<D> },
 ): Error {
   const { ok: _, rejection: code, ...facts } = answer
-  const r = descriptor.result!.rejections.find((r) => r.code === code)!
-  const detail = r.detail(facts)
-  const { title, happened, causes, resolution } = r
+  const w = problems.wording[code]!
+  const detail = w.detail(facts)
+  const { title, happened, causes, resolution } = w
   return call.errors[code]({
     message: detail,
-    data: { ...facts, type: problemTypeOf(descriptor, code), title, detail, instance: call.context.correlationId, happened, causes, resolution },
+    data: { ...facts, type: problemTypeOf(problems.descriptor, code), title, detail, instance: call.context.correlationId, happened, causes, resolution },
   })
 }

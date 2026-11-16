@@ -1,13 +1,35 @@
-import { errorsOf, statusesOf } from "#kit/problems"
+import { documented } from "#kit/documented"
+import { problemsOf, statusesOf } from "#kit/problems"
 import { oc } from "@orpc/contract"
 import { openapi } from "@orpc/openapi"
 import { z } from "zod"
 import { SubmitCart } from "./command"
 
-/** What the caller sends: the command's payload, as is. */
-export const Request = SubmitCart.payload
+/** What the caller sends: the command's payload, as is, in the API's words. */
+export const Request = documented(SubmitCart.payload, {
+  aggregateId: { description: "The cart being submitted.", examples: ["0192f3a0-0000-7000-8000-000000000001"] },
+  orderedProducts: {
+    description: "The products ordered, as the customer confirmed them, each at its price.",
+    fields: {
+      productId: { description: "The product.", examples: ["0192f3a0-0000-7000-8000-000000000201"] },
+      price: { description: "The price it is ordered at.", examples: [49.9] },
+    },
+  },
+})
 /** The command answers only whether it landed; readers follow the views. */
 export const Response = z.object({})
+
+/** Each rejection the command declares, as the API words it. */
+export const problems = problemsOf(SubmitCart, {
+  CART_EMPTY: {
+    title: "The cart is empty",
+    detail: (f) => `Cart ${f.aggregateId} has no products to submit.`,
+    happened: "The cart was not submitted, because a cart is submitted with at least one product.",
+    causes: ["No products were ordered."],
+    resolution: ["Add an item to the cart, then submit it."],
+    facts: { aggregateId: { description: "The cart.", examples: ["0192f3a0-0000-7000-8000-000000000001"] } },
+  },
+})
 
 const submitCart = oc
   .meta(
@@ -19,7 +41,7 @@ const submitCart = oc
       description: "Places the order for the cart's products. A submitted cart is published to the shop's systems.",
     }),
   )
-  .errors(errorsOf(SubmitCart))
+  .errors(problems.errors)
   .input(Request)
   .output(Response)
 

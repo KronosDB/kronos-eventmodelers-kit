@@ -26,8 +26,8 @@ final status itself: do not call `update-slice-status`; record the outcome with
 ## The project
 
 ```
-src/kit/        the conventions slices follow, nothing more: `result`/`rejection` (command.ts), `errorsOf`/`statusesOf`
-                (contract.ts), `refuse` (controller.ts), `CommandContext`/`QueryContext`/`EventContext`,
+src/kit/        the conventions slices follow, nothing more: `result`/`rejection` (command.ts), `documented`/
+                `problemsOf`/`statusesOf` (contract.ts), `refuse` (controller.ts), `CommandContext`/`QueryContext`/`EventContext`,
                 `PartialProcessor`, `Slice`, `pipe`; and testing.ts: the `rejected(code)`
                 assertion. kronos-ts, oRPC and Drizzle are used directly, with their own types
 src/app.ts      `app(resources, slices)`: the composition root, one `kronos({ commandHandlers, queryHandlers,
@@ -202,14 +202,23 @@ first introduced, thinking of every state that will fold it, not only this slice
 tag added later does not reach the events already in the log. A model attribute such as `tag: true` is not the
 rule; tag every id a state is, or will plausibly be, keyed by.
 
+**The domain declares, the contract words.** `command.ts`, `query.ts` and `events.ts` hold types, constraints, rejection
+codes and their facts, and nothing written for a reader: no `.meta(...)`, no titles, no explanations. Everything a
+caller of the API reads (what a field means, its example, what a rejection is called and why it happened) is written
+in `contract.ts`, on top of the domain's schemas. A command only an automation sends has no contract, so its
+rejections carry no words: nobody reads them over HTTP.
+
 **Results and rejections.** A command (or a view that can refuse) declares its outcomes on its descriptor:
-`result(success, rejection("CODE", {...}), …)`, inline in `command.ts` / `query.ts` — there is no `rejections.ts`.
-Every specification whose `then` is an error, or whose title says the command is refused, is one rejection: code in
-UPPER_SNAKE_CASE from the rule, facts = the ids and values the decision saw, and its sentence, `happened`, `causes`
-and `resolution` written from the spec. A command handler returns its answers as plain literals
+`result(success, rejection("CODE", { ...facts }), …)`, inline in `command.ts` / `query.ts` — there is no
+`rejections.ts`. Every specification whose `then` is an error, or whose title says the command is refused, is one
+rejection: code in UPPER_SNAKE_CASE from the rule, facts = the ids and values the decision saw that the caller may
+know (`rejection("CODE")` when there are none). A command handler returns its answers as plain literals
 (`return { ok: true }`, `return { ok: false, rejection: "CODE", ...facts }`): no `as const`, no annotated return type.
-The command, the contract's `.errors(errorsOf(<Command>))` and the controller's `throw refuse(call, <Command>, result)`
-know no protocol. What a rejection is worth over HTTP sits in `contract.ts` beside the route's method and path:
+The contract words each rejection with `export const problems = problemsOf(<Command>, { CODE: { title, detail: (f) =>
+…, happened, causes, resolution, facts: { <fact>: { description, examples } } } })`, written from the refusing spec;
+it does not compile unless every rejection has a wording and every fact a doc. The procedure declares
+`.errors(problems.errors)` and the controller throws `refuse(call, problems, result)`. None of them knows a
+protocol. What a rejection is worth over HTTP sits in `contract.ts` beside the route's method and path:
 `export const statuses = statusesOf(<Command>, { CODE: status })`, which does not compile unless every rejection has
 exactly one status: `404` when the rule is that something does not exist, `409` otherwise. The HTTP edge answers it
 as an RFC 9457 problem document (`type` `/problems/<message>/<code>` in kebab case, `status`, `title`, `detail`,
@@ -225,22 +234,23 @@ is answered `503 SERVICE_UNAVAILABLE` (`isUnavailable`). A handler never catches
 
 **The API documents itself from the board, and only from the board.** The OpenAPI document (and its reference at
 `/docs`) is generated from the contracts, so what the agent writes there is what a reader sees:
-- every payload and result field carries `.meta({ description, examples })`: the description from the field's own
-  description or comments on the board (or one plain sentence naming what it is, when the board has none), the
-  examples from the field's `example`. Written once, on the command's or query's schema; the contract reuses it;
+- every Request and Response field is documented in `contract.ts` with `documented(<schema>, { <field>: { description,
+  examples } })`: the description from the field's own description or comments on the board (or one plain sentence
+  naming what it is, when the board has none), the examples from the field's `example`. A field holding an object (or
+  a list of them) documents its fields too, under `fields`. It does not compile unless every field has a doc;
 - every procedure's `openapi({ … })` has `summary` (the slice title, as a sentence), `description` (the slice's
   `description` and the comments that explain the endpoint) and `tags: ["<Slice Title>"]`. A view and its stream
   share the tag, so they sit together; the edge groups the tags by context;
-- each rejection's `happened`, `causes` and `resolution` become its description in the reference (`errorsOf`), and
-  each of its facts carries `.meta({ description, examples })` too, the examples from the refusing specification:
-  the reference shows every problem as the document a client receives, built from them;
+- each rejection's `happened`, `causes` and `resolution` (in `problemsOf`) become its description in the reference,
+  and each of its facts' docs carries examples from the refusing specification: the reference shows every problem as
+  the document a client receives, built from them;
 Never invent behaviour in a description: say what the board says.
 
 **Contracts are inferred from the messages.** A command's Request is its payload (`<Command>.payload`); a query's
 Request is its payload and its Response what its success carries (`<Query>.result.success`, without `ok`). Where the
 API differs from the message, say so with `.omit`, `.pick` or `.extend` on it, never by writing the fields again: a
-field the edge fills in (who is asking, the server's clock) is `.omit`ted from the Request. A command's Response is
-`z.object({})`.
+field the edge fills in (who is asking, the server's clock) is `.omit`ted from the Request. Then the contract
+documents it: `export const Request = documented(AddItem.payload, { … })`. A command's Response is `z.object({})`.
 
 **HTTP.** A command is `POST`, a view `GET`. The path is the element's `apiEndpoint` when the model sets one,
 otherwise `/<context-folder>/<slice-folder>`. A command answers `{}`: readers follow the views. A live view also streams at `<its path>/stream` (Server-Sent Events: the snapshot, then

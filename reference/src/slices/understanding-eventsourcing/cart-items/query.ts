@@ -3,23 +3,13 @@ import { z } from "zod"
 import { ns } from "../events"
 
 /** One item as the cart shows it. */
-export const CartItem = z.object({
-  itemId: z.uuid().meta({ description: "The item in the cart." }),
-  productId: z.uuid().meta({ description: "The product the item is." }),
-  description: z.string().meta({ description: "The product's name.", examples: ["Running shoes"] }),
-  image: z.string().meta({ description: "The product's picture.", examples: ["shoes.png"] }),
-  price: z.number().meta({ description: "The price the item was added at.", examples: [49.9] }),
-})
+export const CartItem = z.object({ itemId: z.uuid(), productId: z.uuid(), description: z.string(), image: z.string(), price: z.number() })
 export type CartItem = z.infer<typeof CartItem>
 
 /** A cart's items and what they cost together. An unknown cart is an empty one. */
 export const GetCartItems = ns.query("GetCartItems", {
-  payload: z.object({ aggregateId: z.uuid().meta({ description: "The cart.", examples: ["0192f3a0-0000-7000-8000-000000000001"] }) }),
-  result: result({
-    aggregateId: z.uuid().meta({ description: "The cart." }),
-    items: z.array(CartItem).meta({ description: "The items in the cart, oldest first." }),
-    totalPrice: z.number().meta({ description: "What the items cost together.", examples: [99.8] }),
-  }),
+  payload: z.object({ aggregateId: z.uuid() }),
+  result: result({ aggregateId: z.uuid(), items: z.array(CartItem), totalPrice: z.number() }),
 })
 
 /**

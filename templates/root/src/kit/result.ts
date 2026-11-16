@@ -4,29 +4,21 @@ import { z } from "zod"
 // it reaches the browser. Keep this file free of every runtime but zod.
 
 /**
- * A rule the domain guards, and what it says when a request breaks it: in the domain's words, with the facts of this
- * case. Nothing here knows a protocol.
+ * A rule the domain guards: its code, and the facts of the case a caller may know. Nothing here knows a protocol or
+ * a reader: how the API words a rejection (its title, its explanation, what each fact means) is the contract's, in
+ * `problemsOf`.
  */
 export type Rejection<Code extends string = string, Facts extends z.ZodRawShape = z.ZodRawShape> = {
   readonly code: Code
   /** What the decision saw that the caller may know: ids and values, never what the requester may not read. */
   readonly facts: Facts
-  /** Short and constant: what the rejection is called. */
-  readonly title: string
-  /** This case, in a sentence, from its facts. (A method, so any rejection fits `Rejection`.) */
-  detail(facts: z.infer<z.ZodObject<Facts>>): string
-  /** What happened: the rule that was not met. */
-  readonly happened: string
-  /** The situations that lead here. */
-  readonly causes: readonly string[]
-  /** How to resolve it, or avoid it next time. */
-  readonly resolution: readonly string[]
 }
 
-export const rejection = <const Code extends string, Facts extends z.ZodRawShape>(
+/** `rejection("CART_FULL", { aggregateId: z.uuid(), items: z.number().int() })`; a rejection with no facts: `rejection("CODE")`. */
+export const rejection = <const Code extends string, Facts extends z.ZodRawShape = {}>(
   code: Code,
-  spec: Omit<Rejection<Code, Facts>, "code">,
-): Rejection<Code, Facts> => ({ ...spec, code })
+  facts: Facts = {} as Facts,
+): Rejection<Code, Facts> => ({ code, facts })
 
 /** A rejection as it travels on the bus: `{ ok: false, rejection: CODE, ...facts }`. */
 type Refused<R> =
@@ -38,7 +30,7 @@ type Refused<R> =
  * A command's or query's result: what success carries, and every rejection it can answer instead. A rejection is plain
  * data on the bus, so a handler returns it as a literal and a caller reads its facts typed.
  *
- *   result: result({}, rejection("CART_FULL", { facts: { … }, title: …, detail: (f) => …, … }))
+ *   result: result({}, rejection("CART_FULL", { aggregateId: z.uuid(), items: z.number().int() }))
  *   result: result({ items: z.array(Item) })
  *
  * `.success` is what success carries, without `ok`: the shape a contract's Response starts from

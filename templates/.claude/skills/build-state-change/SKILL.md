@@ -20,11 +20,11 @@ Inside `src/slices/<context>/<slice>/`:
 
 | File | What | From |
 |---|---|---|
-| `command.ts` | `ns.command("<Name>", { payload, result: result({}, rejection("CODE", {...}), …) })`: the payload, and one `rejection` per refusing specification, inline | `commands[0].fields`; `specifications[]` whose `then` is an error |
+| `command.ts` | `ns.command("<Name>", { payload, result: result({}, rejection("CODE", { ...facts }), …) })`: the payload's types and constraints, and one `rejection` (code and facts) per refusing specification, inline; no `.meta`, no words | `commands[0].fields`; `specifications[]` whose `then` is an error |
 | `state.ts` | EVERY fold the slice loads: `state({ id, tags, evolve })`, never in a file of its own | the events the specs' `given` hold |
 | `handler.ts` | `commandHandler`: load → decide → append → result | the specs |
-| `contract.ts` | Request (`<Command>.payload`, adjusted with `.omit`/`.pick`/`.extend`) / Response, the oRPC procedure with `.errors(errorsOf(<Command>))`, and beside its method and path `export const statuses = statusesOf(<Command>, { CODE: status })` | `commands[0]` |
-| `controller.ts` | `implement(contract).$context<Edge>()`: send the command once; `throw refuse(call, <Command>, result)` on a rejection | |
+| `contract.ts` | Request (`documented(<Command>.payload, {…})`, adjusted with `.omit`/`.pick`/`.extend` first) / Response, `problems = problemsOf(<Command>, {…})` (each rejection's words and its facts' docs), the oRPC procedure with `.errors(problems.errors)`, and beside its method and path `export const statuses = statusesOf(<Command>, { CODE: status })` | `commands[0]`; the refusing specs |
+| `controller.ts` | `implement(contract).$context<Edge>()`: send the command once; `throw refuse(call, problems, result)` on a rejection | |
 | `index.ts` | `export const <camelName> = { router, statuses, commandHandlers: [handle] } satisfies Slice` | |
 | `slice.spec.ts` | one `it(...)` per specification, given/when/then | `specifications[]` |
 
@@ -44,10 +44,7 @@ its context's `index.ts`. A command only an automation sends (no screen issues i
    record it with `info --kind decision` when the board left it off. Its result is
    `result({}, rejection("CODE", {...}), …)` — one `rejection` per refusing specification, written inline in the
    descriptor (there is no `rejections.ts`). Facts: the ids and values the decision saw that the caller may know.
-   Write `detail`, `happened`, `causes` and `resolution` from the spec's title, description and comments. Every
-   payload field and every fact gets `.meta({ description, examples })` from the board (the contract and the API
-   reference read it): a fact's example is the value the refusing specification shows, so the reference's example
-   problem reads like the real one.
+   Types, constraints, codes and facts only: what a reader is told is written in the contract (step 5).
 3. **State** (in `state.ts`, with any other fold this slice loads). Fold only what the decision needs, from the events its specs' `given` hold. `id` = the id fields;
    `tags` = the same ids. Its initial value is real and typed, with no `null` for "not yet" (a boolean, an empty
    list, or a union of phases): see "State holds facts, never placeholders" in `.build-kit/CLAUDE.md`.
@@ -60,10 +57,14 @@ its context's `index.ts`. A command only an automation sends (no screen issues i
    travel in payloads as ISO strings, read back with `Temporal.Instant.from(…)`. Never `Date.now()`, `new Date()`
    or millisecond arithmetic. Worked example, with its specs moving the clock: `references/time/` — open every file
    when the slice has a time rule.
-5. **Contract and controller.** Request = `<Command>.payload` (`.omit` what the edge fills in, never restated);
-   Response = `z.object({})`. `POST` at `apiEndpoint` or `/<context>/<slice>`, with `summary`, `description` and
-   `tags: ["<Slice Title>"]` from the slice (see "The API documents itself" in `.build-kit/CLAUDE.md`). The procedure declares `.errors(errorsOf(<Command>))`: the rejections, read off the
-   command (`contract.ts` imports `command.ts`, which is browser-safe), with no protocol in them. The HTTP part sits
+5. **Contract and controller.** Request = `documented(<Command>.payload, { … })` (`.omit` what the edge fills in
+   first, never restated): every field's description and examples from the board. Response = `z.object({})`. `POST`
+   at `apiEndpoint` or `/<context>/<slice>`, with `summary`, `description` and `tags: ["<Slice Title>"]` from the
+   slice (see "The API documents itself" in `.build-kit/CLAUDE.md`). Each rejection is worded here:
+   `export const problems = problemsOf(<Command>, { CODE: { title, detail: (f) => …, happened, causes, resolution,
+   facts: { … } } })`, written from the refusing spec's title, description and comments; a fact's example is the value
+   that spec shows, so the reference's example problem reads like the real one. The procedure declares
+   `.errors(problems.errors)` and the controller throws `refuse(call, problems, result)`. The HTTP part sits
    beside the route: `export const statuses = statusesOf(<Command>, { CODE: status })`, `404` for "does not exist"
    rules, `409` otherwise; it does not compile unless every rejection has exactly one.
 6. **Specs** (in memory; no Docker). ONE fixture per spec file, at the top:
@@ -99,5 +100,6 @@ then print again.
 - [ ] every appended event exists in `events.ts` with exactly its `slice.json` fields and tags its ids
 - [ ] every specification is an `it(...)`, and every refusing one is a rejection with a status in `statuses`
 - [ ] the handler appends nothing on a retry
+- [ ] `command.ts` holds types, constraints, codes and facts only; every field, rejection and fact is worded in `contract.ts`
 - [ ] its state has no `null`, `undefined` or optional field standing for "not yet"
 - [ ] each assumption is a one-line comment where it shaped the code and an `info --kind decision` on the slice

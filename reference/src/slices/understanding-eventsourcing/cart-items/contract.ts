@@ -1,15 +1,38 @@
+import { documented } from "#kit/documented"
 import { eventIterator, oc } from "@orpc/contract"
 import { openapi } from "@orpc/openapi"
 import { z } from "zod"
-import { CartItemsUpdate, GetCartItems } from "./query"
+import { CartItem, GetCartItems } from "./query"
 
-/** What the caller asks with: the query's payload, as is. */
-export const Request = GetCartItems.payload
-/** The answer: what the query's success carries, as is. */
-export const Response = GetCartItems.result.success
+/** One item, as the API describes it: in the answer and in the stream's changes alike. */
+const item = {
+  itemId: { description: "The item in the cart.", examples: ["0192f3a0-0000-7000-8000-000000000101"] },
+  productId: { description: "The product the item is.", examples: ["0192f3a0-0000-7000-8000-000000000201"] },
+  description: { description: "The product's name.", examples: ["Running shoes"] },
+  image: { description: "The product's picture.", examples: ["shoes.png"] },
+  price: { description: "The price the item was added at.", examples: [49.9] },
+}
 
-/** The stream: the cart as the plain query answers it first, then each item added or removed. */
-export const StreamEvent = z.union([z.object({ change: z.literal("snapshot"), cart: Response }), CartItemsUpdate])
+/** What the caller asks with: the query's payload, as is, in the API's words. */
+export const Request = documented(GetCartItems.payload, {
+  aggregateId: { description: "The cart.", examples: ["0192f3a0-0000-7000-8000-000000000001"] },
+})
+/** The answer: what the query's success carries, as is, in the API's words. */
+export const Response = documented(GetCartItems.result.success, {
+  aggregateId: { description: "The cart.", examples: ["0192f3a0-0000-7000-8000-000000000001"] },
+  items: { description: "The items in the cart, oldest first.", fields: item },
+  totalPrice: { description: "What the items cost together.", examples: [99.8] },
+})
+
+/**
+ * The stream: the cart as the plain query answers it first, then each item added or removed. The changes are the
+ * projection's (`CartItemsUpdate`), in the API's words.
+ */
+export const StreamEvent = z.union([
+  z.object({ change: z.literal("snapshot"), cart: Response }),
+  z.object({ change: z.literal("added"), item: documented(CartItem, item) }),
+  z.object({ change: z.literal("removed"), itemId: z.uuid().meta(item.itemId) }),
+])
 
 const cartItems = oc
   .meta(
