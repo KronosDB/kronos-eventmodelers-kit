@@ -10,7 +10,11 @@ type RejectionOf<D extends Refusing> = NonNullable<D["result"]>["rejections"][nu
 type CodeOf<D extends Refusing> = RejectionOf<D>["code"]
 
 /** How the API words one rejection: what it is called, this case from its facts, and what each fact means. */
-export type Wording<R extends Rejection = Rejection> = {
+export type Wording<R extends Rejection = Rejection> = Words<R> &
+  // A rejection with no facts needs no `facts`.
+  ([keyof R["facts"]] extends [never] ? { readonly facts?: Record<string, never> } : { readonly facts: DocsOf<R["facts"]> })
+
+type Words<R extends Rejection> = {
   /** Short and constant: what the rejection is called. */
   readonly title: string
   /** This case, in a sentence, from its facts. (A method, so any wording fits `Wording`.) */
@@ -21,8 +25,6 @@ export type Wording<R extends Rejection = Rejection> = {
   readonly causes: readonly string[]
   /** How to resolve it, or avoid it next time. */
   readonly resolution: readonly string[]
-  /** What each fact means to a caller, and an example: every fact, no more. */
-  readonly facts: DocsOf<R["facts"]>
 }
 
 /** A wording for every rejection a descriptor declares, keyed by code: no more, no fewer. */
@@ -109,7 +111,7 @@ export function problemsOf<const D extends Refusing>(descriptor: D, wording: Wor
   const words = wording as unknown as Readonly<Record<string, Wording>>
   const errors = (descriptor.result?.rejections ?? []).map((r) => {
     const w = words[r.code]!
-    const facts = documentedShape(r.facts, w.facts as never)
+    const facts = documentedShape(r.facts, (w.facts ?? {}) as never)
     return [
       r.code,
       {
