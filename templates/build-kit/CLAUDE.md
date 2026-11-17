@@ -253,8 +253,8 @@ field the edge fills in (who is asking, the server's clock) is `.omit`ted from t
 documents it: `export const Request = documented(AddItem.payload, { … })`. A command's Response is `z.object({})`.
 
 **HTTP.** A command is `POST`, a view `GET`. The path is the element's `apiEndpoint` when the model sets one,
-otherwise `/<context-folder>/<slice-folder>`. A command answers `{}`: readers follow the views. A live view also streams at `<its path>/stream` (Server-Sent Events: the snapshot, then
-its updates); which views are live is decided per view (build-state-view).
+otherwise `/<context-folder>/<slice-folder>`. A command answers `{}`: readers follow the views. A live view also streams at `<its path>/stream` (Server-Sent Events: `initial`, then an
+`update` per change); which views are live is decided per view (build-state-view).
 
 **A field with no source** (on an event but on no command, say): keep it in the schema as `.optional()`, never fill
 it with invented data, and record it with `info --kind decision`.

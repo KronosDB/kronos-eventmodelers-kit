@@ -17,8 +17,8 @@ export const router = {
     signal?.addEventListener("abort", () => live.close())
     try {
       const { ok: _, ...cart } = await live.initialResult
-      yield { change: "snapshot" as const, cart }
-      for await (const update of live.updates) yield update as CartItemsUpdate
+      yield { type: "initial", cart }
+      for await (const update of live.updates) yield { type: "update", ...(update as CartItemsUpdate) }
     } finally {
       live.close()
     }

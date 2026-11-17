@@ -66,8 +66,10 @@ screen only; the automation keeps its own. A storyline example is the last spec 
    `.returning(...)` with the view's columns, and the handler emits each returned row with
    `ctx.emitUpdate(<Query>, (q) => q.<id> === p.<id>, update)`, the filter matching the subscribers by the query's
    payload. A write that changed nothing returns nothing, so a replayed event emits nothing; updates leave after the
-   batch commits. The update's shape is the view's: for a one-row view the whole new row; for a list, the row's change
-   (`{ change: "added", item }`, `{ change: "removed", itemId }`), declared as `<Name>Update` in `query.ts`.
+   batch commits. **An update replaces the view, unless the view is a list.** A one-row view emits the whole new view,
+   in its result's shape, as `.returning(...)` gives it back: the subscriber swaps it in, and there is no update type
+   to declare. Only a list emits the change to one row (`{ change: "added", item }`, `{ change: "removed", itemId }`,
+   declared as `<Name>Update` in `query.ts`), so a long list is not sent again for every row.
 4. **Handler.** One `select` through `ctx.db` (typed `QueryContext`), mapped to the result.
 5. **Migration.** `bun run db:generate`, and commit the file it writes to `migrations/`.
 6. **Contract and controller.** Request = `documented(<Query>.payload, {…})`, Response =
@@ -79,12 +81,14 @@ screen only; the automation keeps its own. A storyline example is the last spec 
    stays types only. A stream's update schemas are documented the same way (`references/example/cart-items/contract.ts`
    words an item once and uses it in the Response and the stream). The
    controller is `implement(contract).$context<Edge>()` and answers `context.query(...)` without `ok`. A live view adds
-   `<camelName>Stream`: `GET <the same path>/stream`, the same input, output `eventIterator(StreamEvent)` where
-   `StreamEvent` is the snapshot (`{ change: "snapshot", <view>: Response }`) or an update. Its controller is an
-   `async function*` over `context.subscribe(<Query>, input)`: yield the snapshot from `initialResult`, then every
+   `<camelName>Stream`: `GET <the same path>/stream`, the same input, output `eventIterator(StreamEvent)`. A stream
+   sends `{ type: "initial", <view>: Response }` first, the view as the plain query answers it, then one
+   `{ type: "update", … }` per change: `{ type: "update", <view>: Response }` for a one-row view (the whole view
+   again), `{ type: "update", change: "added", item }` and the like for a list. Its controller is an
+   `async function*` over `context.subscribe(<Query>, input)`: yield `initial` from `initialResult`, then every
    update; close the subscription when the client goes away (`signal`) and in `finally`. **A stream never refuses an
    id the view does not hold yet:** a screen opens before the event that fills it (that is why it is live), so a view
-   whose query refuses an unknown id streams `{ change: "snapshot", <view>: null }` instead, and the row arrives as an
+   whose query refuses an unknown id streams `{ type: "initial", <view>: null }` instead, and the view arrives as an
    update. The plain `GET` keeps its rejection.
 7. **Specs** (Postgres: `bun run infra:up`). ONE fixture per spec file, at the top:
    `const scenarios = fixture(testApp([<slice>], { db: true }))`, with `fixture` from `@kronos-ts/test`, `testApp`
@@ -98,7 +102,7 @@ screen only; the automation keeps its own. A storyline example is the last spec 
    `await scenarios.storyline(query(Q, payload)).shows(...).after(...events).shows(...)`, one `shows` per read-model
    beat and one `after` per run of event beats.
    A live view adds one spec of its stream, as the last spec of `references/example/cart-items/slice.spec.ts` does:
-   open `subscriptionQuery` on the app's query bus, expect the snapshot, then act and expect each update.
+   open `subscriptionQuery` on the app's query bus, expect the initial state, then act and expect each update.
 8. List the slice in its context's `index.ts` (`src/slices/<context>/index.ts`; a new context: that file, and one line in `src/slices/index.ts`).
 9. `bun run typecheck`, then `bun test src/slices/<context>/<slice>`.
 

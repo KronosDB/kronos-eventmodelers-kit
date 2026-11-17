@@ -25,13 +25,14 @@ export const Response = documented(GetCartItems.result.success, {
 })
 
 /**
- * The stream: the cart as the plain query answers it first, then each item added or removed. The changes are the
+ * The stream: `initial`, the cart as the plain query answers it, then an `update` for each item added or removed. A
+ * list streams the change to one row, so a long cart is not sent again for each item; the changes are the
  * projection's (`CartItemsUpdate`), in the API's words.
  */
 export const StreamEvent = z.union([
-  z.object({ change: z.literal("snapshot"), cart: Response }),
-  z.object({ change: z.literal("added"), item: documented(CartItem, item) }),
-  z.object({ change: z.literal("removed"), itemId: z.uuid().meta(item.itemId) }),
+  z.object({ type: z.literal("initial"), cart: Response }),
+  z.object({ type: z.literal("update"), change: z.literal("added"), item: documented(CartItem, item) }),
+  z.object({ type: z.literal("update"), change: z.literal("removed"), itemId: z.uuid().meta(item.itemId) }),
 ])
 
 const cartItems = oc
@@ -47,7 +48,7 @@ const cartItems = oc
   .input(Request)
   .output(Response)
 
-/** The same view, live (Server-Sent Events): the snapshot, then every change until the client goes away. */
+/** The same view, live (Server-Sent Events): its initial state, then every update until the client goes away. */
 const cartItemsStream = oc
   .meta(
     openapi({
@@ -56,7 +57,7 @@ const cartItemsStream = oc
       tags: ["Cart Items"],
       summary: "A cart's items, live",
       description:
-        "The same view as a stream (Server-Sent Events): first `snapshot`, the cart as the plain query answers it, then `added` or `removed` for each item that comes or goes (an automation archives items while the cart is open), until the client goes away.",
+        "The same view as a stream (Server-Sent Events): first `initial`, the cart as the plain query answers it, then an `update` for each item that comes (`change: added`) or goes (`change: removed`), until the client goes away. An automation archives items while the cart is open.",
     }),
   )
   .input(Request)
