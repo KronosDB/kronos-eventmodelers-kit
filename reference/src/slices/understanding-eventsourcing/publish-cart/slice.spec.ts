@@ -10,11 +10,11 @@ import type { CartPublisher } from "./publisher"
 // Two fixtures. The command's decisions run on the command handler alone: in the whole slice the automation would act
 // on a `given` CartSubmitted, as it does in production, and the command would find the cart published already. The
 // automation runs on the whole slice.
-// The external system, recorded: what the automation handed it. It runs in the trace it is handed, as a real client
+// The external system, recorded: what the command's handler handed it. It runs in the trace it is handed, as a real client
 // does: every handling has one, recording nothing without an exporter.
 const published: Parameters<CartPublisher["publish"]>[0][] = []
 const recording: CartPublisher = { publish: (cart, ctx) => ctx.trace.run("cart-publisher.publish", async () => void published.push(cart)) }
-const decisions = fixture(testApp([{ commandHandlers: [handle] }]))
+const decisions = fixture(testApp([{ commandHandlers: [handle(recording)] }]))
 const scenarios = fixture(testApp([publishCart(recording)], { db: true }))
 
 // Every scenario shares the app, so each one submits a cart of its own.
@@ -26,9 +26,11 @@ const submitted = (aggregateId: string) => ({
 
 it("publishes a cart", async () => {
   const aggregateId = Bun.randomUUIDv7()
+  const cart = submitted(aggregateId)
   await decisions
-    .when(command(PublishCart, submitted(aggregateId)))
+    .when(command(PublishCart, cart))
     .then(result({ ok: true }), events(event(CartPublished, { aggregateId })))
+  expect(published.filter((p) => p.aggregateId === aggregateId)).toEqual([cart])
 })
 
 it("lands once when the cart is published already", async () => {
@@ -38,6 +40,7 @@ it("lands once when the cart is published already", async () => {
     .given(event(CartSubmitted, cart), event(CartPublished, { aggregateId }))
     .when(command(PublishCart, cart))
     .then(result({ ok: true }), noEvents())
+  expect(published.filter((p) => p.aggregateId === aggregateId)).toEqual([])
 })
 
 it("publishes the cart when it is submitted", async () => {

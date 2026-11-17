@@ -1,9 +1,9 @@
 import { expect, it } from "bun:test"
-import { type ClientContext, type EventContext, type PartialProcessor, type Slice } from "#kit"
+import { type ClientContext, type CommandContext, result, type Slice } from "#kit"
 import { testApp } from "#test"
-import { batched, eventHandler, eventProcessor, withNamespace } from "@kronos-ts/core"
+import { commandHandler, withNamespace } from "@kronos-ts/core"
 import { type OtlpExporter, SpanKind, spanId, type StartSpanOptions, traceId } from "@kronos-ts/otlp"
-import { event, events, fixture } from "@kronos-ts/test"
+import { command, event, events, fixture } from "@kronos-ts/test"
 import { z } from "zod"
 
 // An outside client, as a context's index.ts wires one: its call runs in a child span of the handling, and the
@@ -16,12 +16,18 @@ const partner: Partner = {
 }
 
 const ns = withNamespace("tracing-spec")
-const Pinged = ns.event("Pinged", { payload: z.object({ pingId: z.uuid() }), tags: { pingId: (p) => p.pingId } })
-const processor: PartialProcessor = (eventStore, tokenStore, unitOfWork) =>
-  batched(eventProcessor("notify-partner", eventStore, tokenStore, unitOfWork), 100)
+const NotifyPartner = ns.command("NotifyPartner", { payload: z.object({ pingId: z.uuid() }), result: result({}) })
+const PartnerNotified = ns.event("PartnerNotified", { payload: z.object({ pingId: z.uuid() }), tags: { pingId: (p) => p.pingId } })
+// The command's handler makes the outside call, then records it.
 const notifyPartner = (partner: Partner) =>
   ({
-    eventHandlers: [eventHandler(Pinged, ({ payload: p }, ctx: EventContext) => partner.notify(p.pingId, ctx))].map((h) => ({ ...h, processor })),
+    commandHandlers: [
+      commandHandler(NotifyPartner, async ({ payload: p }, ctx: CommandContext) => {
+        await partner.notify(p.pingId, ctx)
+        ctx.append(PartnerNotified, p)
+        return { ok: true }
+      }),
+    ],
   }) satisfies Slice
 
 // Every span the app starts, as the exporter is handed it.
@@ -39,12 +45,12 @@ const exporter: OtlpExporter = {
   close: async () => {},
 }
 
-const traced = fixture(testApp([notifyPartner(partner)], { db: true, exporter }))
-const untraced = fixture(testApp([notifyPartner(partner)], { db: true }))
+const traced = fixture(testApp([notifyPartner(partner)], { exporter }))
+const untraced = fixture(testApp([notifyPartner(partner)]))
 
 it("traces an outside call as a child of the handling that makes it, and hands its traceparent on", async () => {
   const pingId = Bun.randomUUIDv7()
-  await traced.when(event(Pinged, { pingId })).then(events(event(Pinged, { pingId })))
+  await traced.when(command(NotifyPartner, { pingId })).then(events(event(PartnerNotified, { pingId })))
 
   const call = spans.find((s) => s.name === "partner.notify")!
   expect(call.kind).toBe(SpanKind.CLIENT)
@@ -56,6 +62,6 @@ it("traces an outside call as a child of the handling that makes it, and hands i
 
 it("hands a client a trace without an exporter too: one that records nothing", async () => {
   const pingId = Bun.randomUUIDv7()
-  await untraced.when(event(Pinged, { pingId })).then(events(event(Pinged, { pingId })))
+  await untraced.when(command(NotifyPartner, { pingId })).then(events(event(PartnerNotified, { pingId })))
   expect(sent.find((s) => s.id === pingId)).toEqual({ id: pingId, traceparent: undefined })
 })

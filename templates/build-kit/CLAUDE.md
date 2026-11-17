@@ -288,7 +288,10 @@ never goes there. It is wired in the context, as `references/example/index.ts` a
   context last (`type CartPublisher = { publish(cart, ctx: ClientContext): Promise<void> }`, `ClientContext` from
   `#kit`), and exports a function of it instead of an object:
   `export const publishCart = (publisher: CartPublisher) => ({ … }) satisfies Slice`;
-- the handler passes its own `ctx`: `await publisher.publish(cart, ctx)`;
+- the call is made by a **command handler**, never an event handler: the command is the decision to do something in
+  the outside world, so its handler calls the system and then appends the event that records it. The slice's
+  `handle` becomes a function of the client (`handle(publisher)`), and passes its own `ctx`:
+  `await publisher.publish(cart, ctx)`. An automation only sends the command;
 - the context's `index.ts` builds the real client once (its settings from `env`) and hands it to every slice that
   uses it: `publishCart(publisher)`. Every call runs in a child span of the handling and carries that span's
   `traceparent`, so a trace never stops at the edge of the system: `ctx.trace.run("cart-publisher.publish", (span) =>
@@ -296,15 +299,16 @@ never goes there. It is wired in the context, as `references/example/index.ts` a
   `ctx.log`, so its lines carry the handling's correlation. `ctx.trace` is always there (without an exporter it
   records nothing), so a client never checks for it;
 - the slice's spec hands it a recording one, and checks what reached it.
-An automation calls the outside system, then records that it did with its command: a fact is never recorded before
-the system has it, and a call can be repeated after a crash, so it must be harmless twice (send the slice's own id
-as the call's idempotency key where the system takes one). A retry runs the whole handler again, so what the call
-sends and what the command records must come out the same every time: take it from the trigger, and derive anything
-new from the trigger too (its `identifier`, keyed with a secret from `env` when it must not be guessable), never from
-randomness inside the handler. When the board does not name the system, the context
+The handler calls the outside system first and appends after: a fact is never recorded before the system has it.
+The call can be repeated (a crash before the append, an append that lost a race, the automation sending again), so
+it must be harmless twice: send the slice's own id as the call's idempotency key where the system takes one. A
+repeat must also send and record exactly what the first attempt did, so nothing the call needs is made up inside the
+handler: it comes in the command's payload. An automation that sends the command takes it from its trigger, and
+derives anything new from the trigger too (its `identifier`, keyed with a secret from `env` when it must not be
+guessable), never from randomness. When the board does not name the system, the context
 wires a stand-in that does nothing, with a comment saying so, and the choice is recorded with `info --kind decision`.
 
-A projection never calls outside the system. It must write the same rows every time it replays from the start, and
+A projection never calls outside the system, and neither does an automation's event handler. It must write the same rows every time it replays from the start, and
 an outside answer can differ (and the call would be repeated) on every replay. What the outside system says comes in
 as an event, through an automation, and the projection reads that event.
 

@@ -63,7 +63,7 @@ Inside `src/slices/<context>/<slice>/`:
 | `schema.ts`, `projection.ts` | only for a todo list kept in a read model of its own: its table, and one plain `eventHandler` per INBOUND event, listed first in `automation` |
 | `command.ts`, `handler.ts` | the command it sends (with its rejections inline), when this slice owns it, as in build-state-change, without a contract |
 | `<client>.ts` | only when it calls an outside system: the type of what it needs from it, each call taking `ctx: ClientContext` last, e.g. `publisher.ts` with `CartPublisher` |
-| `index.ts` | `export const <camelName> = { commandHandlers: [handle], eventHandlers: automation } satisfies Slice`; an automation that calls an outside system: a function of its client, `(publisher: CartPublisher) => ({ … })`, wired in the context's `index.ts` (`.build-kit/CLAUDE.md`, "What a slice needs from outside") |
+| `index.ts` | `export const <camelName> = { commandHandlers: [handle], eventHandlers: automation } satisfies Slice`; when the command calls an outside system: a function of its client, `(publisher: CartPublisher) => ({ commandHandlers: [handle(publisher)], eventHandlers: automation })`, wired in the context's `index.ts` (`.build-kit/CLAUDE.md`, "What a slice needs from outside") |
 | `slice.spec.ts` | the command's decisions, and the automation driven by its trigger |
 
 ## The processor
@@ -104,10 +104,13 @@ with a typed, real initial value and no `null`: see "State holds facts, never pl
 3. **Command.** If this slice owns the command, build `command.ts` and `handler.ts` as build-state-change does,
    without `contract.ts` / `controller.ts`: only the automation sends it. Its handler lands once (a second send for
    the same id appends nothing). Field `mapping`s on the processor say which state field fills which command field.
+   When the slice does something in an outside system (mails, publishes, charges), the command's handler makes the
+   call, with its `ctx`, before it appends: `handle` is a function of the client, as `publish-cart/handler.ts` is.
 4. **Automation.** `ctx.load` the state (in steps if it reads better), or select the todo list through `ctx.db`;
    when there is nothing to do, return; otherwise `ctx.send` once per item, its payload taken from the trigger's
-   where the trigger carries it. An outside call comes first and takes the handler's `ctx`
-   (`await publisher.publish(cart, ctx)`), so it is traced with the handling. Never read a table through `ctx.query`:
+   where the trigger carries it, and anything the command's outside call needs made (a token) derived from the
+   trigger. The automation never calls outside the system itself: its command's handler does. Never read a table
+   through `ctx.query`:
    a query is its own task and does not see what this batch wrote.
 5. **Code an earlier build wrote for the todo list** (a projection slice of its own): this slice takes it over.
    Delete its folder and its entry in its context's `index.ts`, run `bun run db:generate` for the migration that drops
@@ -115,11 +118,12 @@ with a typed, real initial value and no `null`: see "State holds facts, never pl
    record it with `info --kind decision`. A view a screen still reads stays, untouched.
 6. **Specs**: one spec file, with TWO fixtures at the top, each `fixture(testApp(...))` with `fixture` from
    `@kronos-ts/test` and `testApp` from `#test` (`testApp` drops its database, and stops its app, after the last test):
-   - `const decisions = fixture(testApp([{ commandHandlers: [handle] }]))` for the command's decisions,
+   - `const decisions = fixture(testApp([{ commandHandlers: [handle] }]))` for the command's decisions
+     (`[handle(recording)]` when it calls an outside system, and the spec checks what reached it),
      in memory, as in build-state-change. The command handler alone: in the whole slice the automation would act on a
      `given` trigger, as it does in production, and the decision would see the command already sent.
-   - `const scenarios = fixture(testApp([<slice>], { db: true }))` for the automation (`<slice>(recording)` when it
-     takes a client: a recording one that runs in `ctx.trace.run(...)` as a real one does), on Postgres (`bun run
+   - `const scenarios = fixture(testApp([<slice>], { db: true }))` for the automation (`<slice>(recording)` when its
+     command takes a client: a recording one that runs in `ctx.trace.run(...)` as a real one does), on Postgres (`bun run
      infra:up`): `await scenarios.when(event(Trigger, …)).then(commands(command(Cmd, …)), events(event(Trigger, …), ...appended events))` — the arriving event counts as appended.
    `given` events are handled live, never as a replay: an automation acts on them as it would on any event, so its
    state must make a second trigger harmless. Scenarios share an app, its database and its processors, and nothing is
@@ -140,6 +144,6 @@ with a typed, real initial value and no `null`: see "State holds facts, never pl
 - [ ] every event a state folds carries the tags its query asks for
 - [ ] the command lands once when it is sent twice for the same item
 - [ ] a spec shows the command and its events carry the automation as their actor
-- [ ] an outside call takes `ctx`, and a retry sends and records exactly what the first attempt did
+- [ ] an outside call is made by the command's handler, with its `ctx`, and a repeat sends and records exactly what the first attempt did
 - [ ] its state has no `null`, `undefined` or optional field standing for "not yet"
 - [ ] every specification is an `it(...)`

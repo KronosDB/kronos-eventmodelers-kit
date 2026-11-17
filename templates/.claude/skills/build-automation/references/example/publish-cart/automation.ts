@@ -2,7 +2,6 @@ import type { EventContext, PartialProcessor } from "#kit"
 import { batched, concurrent, deadLettering, eventHandler, eventProcessor, type Sequence } from "@kronos-ts/core"
 import { CartSubmitted } from "../events"
 import { PublishCart } from "./command"
-import type { CartPublisher } from "./publisher"
 import { Publication } from "./state"
 
 /** One lane per cart: events about the same cart are handled in order, one after another. */
@@ -22,14 +21,11 @@ const processor: PartialProcessor = (eventStore, tokenStore, unitOfWork, deadLet
 
 /**
  * One handler per event the automation reacts to, all on its processor. The cart is the event's payload; the state
- * says only whether it is published yet. It hands the cart to the external system, with its `ctx` so the call is
- * traced, then records that it did with the command: a cart is never recorded published before the system has it.
+ * says only whether it is published yet. An open item is sent as the command; the command's handler does the work.
  */
-export const automation = (publisher: CartPublisher) =>
-  [
-    eventHandler(CartSubmitted, async ({ payload: cart }, ctx: EventContext) => {
-      if ((await ctx.load(Publication, { aggregateId: cart.aggregateId })).published) return
-      await publisher.publish(cart, ctx)
-      await ctx.send(PublishCart, cart)
-    }),
-  ].map((h) => ({ ...h, processor }))
+export const automation = [
+  eventHandler(CartSubmitted, async ({ payload: cart }, ctx: EventContext) => {
+    if ((await ctx.load(Publication, { aggregateId: cart.aggregateId })).published) return
+    await ctx.send(PublishCart, cart)
+  }),
+].map((h) => ({ ...h, processor }))
