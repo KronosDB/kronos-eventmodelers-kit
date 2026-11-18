@@ -11,7 +11,7 @@ services:
       interval: 2s
       retries: 20
   kronosdb:
-    image: ghcr.io/kronosdb/kronosdb:0.15.0
+    image: ghcr.io/kronosdb/kronosdb:0.16.0
     ports: ["50051:50051", "9240:9240"]
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9240/ready"]
