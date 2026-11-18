@@ -13,10 +13,10 @@
     "telemetry:up": "docker compose --profile telemetry up -d --wait telemetry"
   },
   "dependencies": {
-    "@kronos-ts/core": "0.11.2",
-    "@kronos-ts/kronosdb": "0.13.4",
-    "@kronos-ts/otlp": "0.7.6",
-    "@kronos-ts/postgres": "0.21.4",
+    "@kronos-ts/core": "0.12.0",
+    "@kronos-ts/kronosdb": "0.13.5",
+    "@kronos-ts/otlp": "0.7.7",
+    "@kronos-ts/postgres": "0.21.5",
     "@orpc/contract": "2.0.0-beta.51",
     "@orpc/openapi": "2.0.0-beta.51",
     "@orpc/server": "2.0.0-beta.51",
@@ -26,7 +26,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@kronos-ts/test": "0.9.2",
+    "@kronos-ts/test": "0.9.3",
     "@types/bun": "^1.4.4",
     "drizzle-kit": "^0.31.11",
     "typescript": "^7.0.2"
