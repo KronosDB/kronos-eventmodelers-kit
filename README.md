@@ -96,6 +96,11 @@ starts a local Grafana LGTM stack (Grafana on :3001, OTLP on :4318); see the sta
 
 ## Specs
 
+A slice's spec file is the slice's scenarios on the board, one test each, named with the scenario's title, and
+nothing else. What the kit itself guarantees (the HTTP edge and its problems, a live view's stream, an automation
+acting as itself, an outside call traced with the handling) is tested by the kit's own specs, in `src/app.spec.ts`
+and `src/app/`, so the starter carries them with no slices.
+
 A spec file builds ONE fixture, `fixture(testApp(slices, { db? }))`, and runs every scenario on it. `testApp`
 (`test/index.ts`) returns the same `app()` over test resources: an in-memory log recorded with a clock, a recorded
 command bus over a local one, a local query bus, and in-memory or Postgres tokens, dead letters and processing. It stops

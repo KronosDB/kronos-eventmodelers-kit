@@ -1,9 +1,9 @@
 import { expect, it } from "bun:test"
-import { type ClientContext, type CommandContext, result, type Slice } from "#kit"
+import { type ClientContext, type CommandContext, type EventContext, type PartialProcessor, result, type Slice } from "#kit"
 import { testApp } from "#test"
-import { commandHandler, withNamespace } from "@kronos-ts/core"
+import { batched, commandHandler, eventHandler, eventProcessor, withNamespace } from "@kronos-ts/core"
 import { type OtlpExporter, SpanKind, spanId, type StartSpanOptions, traceId } from "@kronos-ts/otlp"
-import { command, event, events, fixture } from "@kronos-ts/test"
+import { command, commands, event, events, fixture } from "@kronos-ts/test"
 import { z } from "zod"
 
 // An outside client, as a context's index.ts wires one: its call runs in a child span of the handling, and the
@@ -64,4 +64,31 @@ it("hands a client a trace without an exporter too: one that records nothing", a
   const pingId = Bun.randomUUIDv7()
   await untraced.when(command(NotifyPartner, { pingId })).then(events(event(PartnerNotified, { pingId })))
   expect(sent.find((s) => s.id === pingId)).toEqual({ id: pingId, traceparent: undefined })
+})
+
+// An automation acts as itself: what it sends carries its processor's name and `actorType: "automation"`, not the
+// actor of the event it reacted to, and the chain stays one correlation. A slice never tests this; the kit does.
+const Requested = ns.event("Requested", { payload: z.object({ pingId: z.uuid() }), tags: { pingId: (p) => p.pingId } })
+const processor: PartialProcessor = (eventStore, tokenStore, unitOfWork) =>
+  batched(eventProcessor("notify-on-request", eventStore, tokenStore, unitOfWork), 100)
+const notifyOnRequest = {
+  ...notifyPartner({ notify: (_id, ctx) => ctx.trace.run("partner.notify", async () => {}) }),
+  eventHandlers: [
+    eventHandler(Requested, async ({ payload: p }, ctx: EventContext) => {
+      await ctx.send(NotifyPartner, p)
+    }),
+  ].map((h) => ({ ...h, processor })),
+} satisfies Slice
+const automated = fixture(testApp([notifyOnRequest], { db: true }))
+
+it("stamps what an automation sends with the automation as its actor, in the chain of whoever started it", async () => {
+  const pingId = Bun.randomUUIDv7()
+  const member = { actor: "member-1", actorType: "user", correlationId: `request-${pingId}` }
+  const itself = { actor: "notify-on-request", actorType: "automation", correlationId: member.correlationId }
+  await automated
+    .when(event(Requested, { pingId }, member))
+    .then(
+      commands(command(NotifyPartner, { pingId }, itself)),
+      events(event(Requested, { pingId }, member), event(PartnerNotified, { pingId }, itself)),
+    )
 })

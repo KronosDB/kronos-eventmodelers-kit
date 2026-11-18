@@ -27,7 +27,7 @@ Inside `src/slices/<context>/<slice>/`:
 | `contract.ts` | Request (`<Query>.payload`) / Response (`<Query>.result.success`) and the `GET` procedure; a live view also its `GET …/stream` procedure |
 | `controller.ts` | `context.query(...)`, answer the read model without `ok`; a live view also its stream (`context.subscribe(...)`) |
 | `index.ts` | `export const <camelName> = { router, queryHandlers: [handle], eventHandlers: projection } satisfies Slice` |
-| `slice.spec.ts` | one `it(...)` per specification, against Postgres |
+| `slice.spec.ts` | exactly the slice's scenarios: one `it(...)` per specification and storyline, against Postgres, nothing else; none when the board has none |
 
 **Live views are opt in, and the test is the view's INBOUND events.** For each one, find what appends it (the board's
 dependencies, or the slice that has it as an OUTBOUND event):
@@ -41,8 +41,8 @@ archives items while the cart is open.
 
 A read model only automations read (a todo list) is not built here at all: it is the automation's own state (see
 `.build-kit/CLAUDE.md`, "Pick the skill"). A read model a screen shows AND an automation reads is built here for the
-screen only; the automation keeps its own. A storyline example is the last spec of
-`references/example/cart-items/slice.spec.ts`.
+screen only; the automation keeps its own. A storyline example is the last test in
+`references/example/cart-items/slice.spec.ts` ("walks a cart from empty to full and back").
 
 ## Steps
 
@@ -100,9 +100,10 @@ screen only; the automation keeps its own. A storyline example is the last spec 
    The spec's `given` events reach the projection; its `then` read model (or `expectEmptyList`) becomes the expected
    answer. A storyline in `slice.json` becomes
    `await scenarios.storyline(query(Q, payload)).shows(...).after(...events).shows(...)`, one `shows` per read-model
-   beat and one `after` per run of event beats.
-   A live view adds one spec of its stream, as the last spec of `references/example/cart-items/slice.spec.ts` does:
-   open `subscriptionQuery` on the app's query bus, expect the initial state, then act and expect each update.
+   beat and one `after` per run of event beats. Name each `it(...)` with its scenario's title. These are the only
+   tests: none the board does not have (a live view's stream is the kit's to test, not the slice's), and no
+   assertion a scenario does not make (see "Tests are the model's scenarios" in `.build-kit/CLAUDE.md`). A slice with
+   no scenarios has no spec file.
 8. List the slice in its context's `index.ts` (`src/slices/<context>/index.ts`; a new context: that file, and one line in `src/slices/index.ts`).
 9. `bun run typecheck`, then `bun test src/slices/<context>/<slice>`.
 
@@ -120,5 +121,5 @@ then print again.
 - [ ] `query.ts` holds types only; every Request, Response and stream field is documented in `contract.ts`
 - [ ] every INBOUND event has a projection handler, and every write is safe to repeat
 - [ ] the migration is generated and committed
-- [ ] every specification is an `it(...)`
+- [ ] every specification and storyline is an `it(...)` named with its title, and there are no other tests
 - [ ] each INBOUND event's origin is checked: a view any automation or other actor writes streams; the choice and its event are recorded; a live view emits from every handler

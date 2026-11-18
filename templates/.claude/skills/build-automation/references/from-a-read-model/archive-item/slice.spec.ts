@@ -1,12 +1,11 @@
 import { it } from "bun:test"
 import { testApp } from "#test"
-import { commandHandler } from "@kronos-ts/core"
 import { command, commands, event, events, fixture, noEvents, result } from "@kronos-ts/test"
-import { z } from "zod"
-import type { Slice } from "#kit"
-import { ItemAdded, ItemArchived, ItemRemoved, ns, PriceChanged } from "../events"
+import { ItemAdded, ItemArchived, ItemRemoved, PriceChanged } from "../events"
 import { ArchiveItem } from "./command"
 import { archiveItem } from "."
+
+// The slice's scenarios on the board, one test each, named with the scenario's title, and no other tests.
 
 // Every scenario shares the app, so each one uses carts, items and products of its own. A price change reaches
 // every cart holding the product, so the product is the scenario's own too.
@@ -64,26 +63,4 @@ it("acts once on a cart holding the product twice, and not on a cart that let it
     .given(added(cart1, item1, shoes), added(cart1, item2, shoes), added(cart2, item3, shoes), event(ItemRemoved, { aggregateId: cart2, itemId: item3 }))
     .when(changed)
     .then(commands(command(ArchiveItem, { aggregateId: cart1, productId: shoes })))
-})
-
-// Both facts in ONE append, so they reach the processor in one batch: the cart's row is written in the same
-// transaction the automation reads in. Reading through the query bus instead, the automation saw no row.
-const AddThenReprice = ns.command("AddThenReprice", {
-  payload: z.object({ cart: z.uuid(), item: z.uuid(), product: z.uuid() }),
-})
-const together = {
-  commandHandlers: [
-    commandHandler(AddThenReprice, async ({ payload: p }, ctx) => {
-      ctx.append(ItemAdded, { aggregateId: p.cart, itemId: p.item, productId: p.product, description: "", image: "", price: 1 })
-      ctx.append(PriceChanged, { productId: p.product, oldPrice: 1, newPrice: 2 })
-    }),
-  ],
-} satisfies Slice
-const withTogether = fixture(testApp([archiveItem, together], { db: true }))
-
-it("sees an item added in the same batch as the price change", async () => {
-  const [cart, item, shoes] = [Bun.randomUUIDv7(), Bun.randomUUIDv7(), Bun.randomUUIDv7()]
-  await withTogether
-    .when(command(AddThenReprice, { cart, item, product: shoes }))
-    .then(commands(command(ArchiveItem, { aggregateId: cart, productId: shoes })))
 })

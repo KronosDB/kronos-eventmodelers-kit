@@ -26,7 +26,7 @@ Inside `src/slices/<context>/<slice>/`:
 | `contract.ts` | Request (`documented(<Command>.payload, {…})`, adjusted with `.omit`/`.pick`/`.extend` first) / Response, `problems = problemsOf(<Command>, {…})` (each rejection's words and its facts' docs), the oRPC procedure with `.errors(problems.errors)`, and beside its method and path `export const statuses = statusesOf(<Command>, { CODE: status })` | `commands[0]`; the refusing specs |
 | `controller.ts` | `implement(contract).$context<Edge>()`: send the command once; `throw refuse(call, problems, result)` on a rejection | |
 | `index.ts` | `export const <camelName> = { router, statuses, commandHandlers: [handle] } satisfies Slice` | |
-| `slice.spec.ts` | one `it(...)` per specification, given/when/then | `specifications[]` |
+| `slice.spec.ts` | exactly the slice's scenarios: one `it(...)` per specification and storyline, given/when/then, nothing else; none when the board has none | `specifications[]`, `storylines[]` |
 
 Outside the folder: add every event it appends to `src/slices/<context>/events.ts` if missing, and the slice to
 its context's `index.ts`. A command only an automation sends (no screen issues it) has no `contract.ts` or
@@ -77,9 +77,10 @@ its context's `index.ts`. A command only an automation sends (no screen issues i
    `#kit/testing` plus `noEvents()`. A success claims `result({ ok: true })` too.
    Scenarios share the app and nothing is reset between them, so each `it(...)` mints its own ids with
    `Bun.randomUUIDv7()` (the cart, the item, the product), never ids shared across tests. Take every other value
-   from the spec's examples; where it has none, use readable ones. Name each `it(...)` after the specification's
-   title. Add a spec for the retry (same command twice lands once) even when the board has none. Any other check is
-   an ordinary function of the outcome: `.then(({ result, events, app }) => …)`.
+   from the spec's examples; where it has none, use readable ones. Name each `it(...)` with the specification's
+   title. These are the only tests: no test the board does not have (a retry, …), and no assertion its `then` does
+   not make (see "Tests are the model's scenarios" in `.build-kit/CLAUDE.md`). A slice with no scenarios has no spec
+   file.
    A storyline in `slice.json` adds one scenario per COMMAND beat, in a `describe` named after the storyline:
    `given` the events of every beat before it, in order; `when` the command, from the beat's fields; `then` the
    EVENT beats that follow it. Its READMODEL beats belong to the view's slice, not here.
@@ -98,7 +99,8 @@ then print again.
 
 - [ ] every field of `commands[].fields` is in the payload and the Request, and nothing else is
 - [ ] every appended event exists in `events.ts` with exactly its `slice.json` fields and tags its ids
-- [ ] every specification is an `it(...)`, and every refusing one is a rejection with a status in `statuses`
+- [ ] every specification and storyline is an `it(...)` named with its title, and there are no other tests
+- [ ] every refusing specification is a rejection with a status in `statuses`
 - [ ] the handler appends nothing on a retry
 - [ ] `command.ts` holds types, constraints, codes and facts only; every field, rejection and fact is worded in `contract.ts`
 - [ ] its state has no `null`, `undefined` or optional field standing for "not yet"

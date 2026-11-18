@@ -110,7 +110,8 @@ id a create command carries, see "Ids" below).
    field and fix every drift. After the checks pass and before committing, run
    `npx @eventmodelers/cli build-baseline record --scope backend`, and commit the baseline file it writes with the
    slice.
-5. Verify against `slice.json`: every field and every specification is in the code, nothing else is.
+5. Verify against `slice.json`: every field and every specification is in the code, nothing else is. A slice's
+   tests are its scenarios, exactly (see "Tests are the model's scenarios").
 6. `bun run typecheck`, then the slice's specs. A spec file builds ONE fixture, `fixture(testApp([<slice>]))`, with
    `testApp` from `#test` (the same `app()` `main.ts` calls) and runs every scenario on it. Scenarios share the app
    and nothing is reset between them, so each `it(...)` mints its own ids with `Bun.randomUUIDv7()`. `testApp` stops
@@ -201,6 +202,15 @@ and automations alike — each under its own name (`aggregateId`, `itemId`, `pro
 first introduced, thinking of every state that will fold it, not only this slice's: tags are stored at append, so a
 tag added later does not reach the events already in the log. A model attribute such as `tag: true` is not the
 rule; tag every id a state is, or will plausibly be, keyed by.
+
+**Tests are the model's scenarios.** A slice's spec file translates the slice's scenarios on the board, all of them
+and nothing else: one `it(...)` per entry of `specifications[]`, and one per storyline (as its skill says), each
+named with the scenario's title as written. Its `given`, `when` and `then` are the scenario's, element for element,
+with the scenario's example values; it asserts what the scenario's `then` says and nothing more. Never add a test the
+board does not have: not for a retry, a stream, the actor, a batch, an outside call or any other property of the
+code. Those are the kit's to guarantee, in its own specs, and the slice's code still follows every rule here. A slice
+whose board gives it no scenario has no spec file: skip its test run, and record `info --kind limitation` that the
+board specifies no scenario for it.
 
 **The domain declares, the contract words.** `command.ts`, `query.ts` and `events.ts` hold types, constraints, rejection
 codes and their facts, and nothing written for a reader: no `.meta(...)`, no titles, no explanations. Everything a
@@ -298,7 +308,8 @@ never goes there. It is wired in the context, as `references/example/index.ts` a
   fetch(url, { headers: { traceparent: span.traceparent }, … }), { kind: SpanKind.CLIENT })`. It logs through
   `ctx.log`, so its lines carry the handling's correlation. `ctx.trace` is always there (without an exporter it
   records nothing), so a client never checks for it;
-- the slice's spec hands it a recording one, and checks what reached it.
+- the slice's spec hands it a stand-in that records nothing the scenarios do not assert (`{ publish: async () => {} }`
+  run in `ctx.trace.run(…)`), so the scenarios run.
 The handler calls the outside system first and appends after: a fact is never recorded before the system has it.
 The call can be repeated (a crash before the append, an append that lost a race, the automation sending again), so
 it must be harmless twice: send the slice's own id as the call's idempotency key where the system takes one. A
@@ -322,8 +333,7 @@ is from, and what kind of who (`user`, `anonymous`, `automation`, `system`, or a
 them on the request's message, and `app.ts` carries them (`origin` from `#kit`) onto everything a command's handling
 births, so its events say who sent it. An automation acts as itself: what it sends carries its processor's name with
 `actorType: "automation"`, and whoever started the chain is reached through the correlation id. A chain
-nothing outside started is the `system`'s. A slice never stamps or changes them; a spec of an automation expects its
-command and events to carry `{ actor: "<processor name>", actorType: "automation" }`.
+nothing outside started is the `system`'s. A slice never stamps or changes them.
 
 The kit does not decide how an app authenticates, and slice work never adds authentication: no token parsing, no
 session lookup, no `identify` in a slice. The app decides it in one file, `src/app/auth.ts`: `identify(request)`

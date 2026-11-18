@@ -6,6 +6,8 @@ import { SendReminder } from "./command"
 import { ReminderSent } from "./events"
 import { sendReminder } from "."
 
+// The slice's scenarios on the board, one test each, named with the scenario's title, and no other tests.
+
 // The app's clock, shared by every scenario here and moving only by `advance`: a scenario reads the instant it starts
 // at. It moves by milliseconds: convert at that boundary, nowhere else.
 const clock = advanceableClock()

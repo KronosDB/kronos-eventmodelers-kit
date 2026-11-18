@@ -64,7 +64,7 @@ Inside `src/slices/<context>/<slice>/`:
 | `command.ts`, `handler.ts` | the command it sends (with its rejections inline), when this slice owns it, as in build-state-change, without a contract |
 | `<client>.ts` | only when it calls an outside system: the type of what it needs from it, each call taking `ctx: ClientContext` last, e.g. `publisher.ts` with `CartPublisher` |
 | `index.ts` | `export const <camelName> = { commandHandlers: [handle], eventHandlers: automation } satisfies Slice`; when the command calls an outside system: a function of its client, `(publisher: CartPublisher) => ({ commandHandlers: [handle(publisher)], eventHandlers: automation })`, wired in the context's `index.ts` (`.build-kit/CLAUDE.md`, "What a slice needs from outside") |
-| `slice.spec.ts` | the command's decisions, and the automation driven by its trigger |
+| `slice.spec.ts` | exactly the slice's scenarios: one `it(...)` per specification and storyline, the command's decisions and the automation driven by its trigger; none when the board has none |
 
 ## The processor
 
@@ -119,31 +119,26 @@ with a typed, real initial value and no `null`: see "State holds facts, never pl
 6. **Specs**: one spec file, with TWO fixtures at the top, each `fixture(testApp(...))` with `fixture` from
    `@kronos-ts/test` and `testApp` from `#test` (`testApp` drops its database, and stops its app, after the last test):
    - `const decisions = fixture(testApp([{ commandHandlers: [handle] }]))` for the command's decisions
-     (`[handle(recording)]` when it calls an outside system, and the spec checks what reached it),
+     (`[handle(stub)]` when it calls an outside system: a stand-in, never asserted),
      in memory, as in build-state-change. The command handler alone: in the whole slice the automation would act on a
      `given` trigger, as it does in production, and the decision would see the command already sent.
-   - `const scenarios = fixture(testApp([<slice>], { db: true }))` for the automation (`<slice>(recording)` when its
-     command takes a client: a recording one that runs in `ctx.trace.run(...)` as a real one does), on Postgres (`bun run
+   - `const scenarios = fixture(testApp([<slice>], { db: true }))` for the automation (`<slice>(stub)` when its
+     command takes a client: a stand-in that runs in `ctx.trace.run(...)` as a real one does), on Postgres (`bun run
      infra:up`): `await scenarios.when(event(Trigger, …)).then(commands(command(Cmd, …)), events(event(Trigger, …), ...appended events))` — the arriving event counts as appended.
    `given` events are handled live, never as a replay: an automation acts on them as it would on any event, so its
    state must make a second trigger harmless. Scenarios share an app, its database and its processors, and nothing is
    reset between them, so each `it(...)` mints its own ids with `Bun.randomUUIDv7()`: its own carts and items and, when
    the trigger names a product or any id that reaches every cart, its own of those too (or another scenario's rows
-   answer it):
-   - with a read model of its own: one spec where an item and the trigger land in one append (one batch), as
-     `references/from-a-read-model/archive-item/slice.spec.ts` does;
-   - one spec per `specifications[]` entry and storyline, as usual;
-   - one spec that the automation acts as itself: the trigger arrives with a user's actor, and the command and the
-     events it causes carry `{ actor: "<processor name>", actorType: "automation" }`, as
-     `references/example/publish-cart/slice.spec.ts` does.
+   answer it). One `it(...)` per `specifications[]` entry and storyline, named with its title, and no other tests:
+   none for a retry, a batch, the actor or an outside call, and no assertion a scenario does not make (see "Tests
+   are the model's scenarios" in `.build-kit/CLAUDE.md`). A slice with no scenarios has no spec file.
 
 ## Done when
 
 - [ ] the automation reacts to exactly its trigger and sends exactly its command, once per item
 - [ ] its todo list is its own: folded in `state.ts`, or a private read model in its own folder on its own processor
 - [ ] every event a state folds carries the tags its query asks for
-- [ ] the command lands once when it is sent twice for the same item
-- [ ] a spec shows the command and its events carry the automation as their actor
+- [ ] the command's handler appends nothing when the item is closed already (a second send lands once)
 - [ ] an outside call is made by the command's handler, with its `ctx`, and a repeat sends and records exactly what the first attempt did
 - [ ] its state has no `null`, `undefined` or optional field standing for "not yet"
-- [ ] every specification is an `it(...)`
+- [ ] every specification and storyline is an `it(...)` named with its title, and there are no other tests

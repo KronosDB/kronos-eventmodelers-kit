@@ -1,11 +1,11 @@
-import { expect, it } from "bun:test"
+import { it } from "bun:test"
 import { testApp } from "#test"
-import { consoleLogger, type SubscriptionCapableQueryBus, subscriptionQuery } from "@kronos-ts/core"
 import { event, events, fixture, noEvents, query, result } from "@kronos-ts/test"
 import { CartCleared, CartCreated, ItemAdded, ItemArchived, ItemRemoved } from "../events"
-import { serve } from "../../../app/http"
 import { GetCartItems } from "./query"
 import { cartItems } from "."
+
+// The slice's scenarios on the board, one test each, named with the scenario's title, and no other tests.
 
 const app = testApp([cartItems], { db: true })
 const scenarios = fixture(app)
@@ -71,51 +71,3 @@ it("walks a cart from empty to full and back", async () => {
     .shows({ ok: true, aggregateId, items: [], totalPrice: 0 })
 })
 
-it("streams a cart's items to a subscriber: its initial state, then each item added and removed", async () => {
-  const aggregateId = Bun.randomUUIDv7()
-  const a = item(aggregateId, 1, 10)
-  const [bus] = (await app).queryBuses
-  const live = subscriptionQuery(bus as SubscriptionCapableQueryBus, GetCartItems, { aggregateId })
-  try {
-    expect(await live.initialResult).toEqual({ ok: true, aggregateId, items: [], totalPrice: 0 })
-    const updates = live.updates[Symbol.asyncIterator]()
-    await scenarios.when(event(ItemAdded, a)).then(events(event(ItemAdded, a)))
-    expect((await updates.next()).value).toEqual({ change: "added", item: row(a) })
-    const removed = event(ItemRemoved, { aggregateId, itemId: a.itemId })
-    await scenarios.when(removed).then(events(removed))
-    expect((await updates.next()).value).toEqual({ change: "removed", itemId: a.itemId })
-  } finally {
-    live.close()
-  }
-})
-
-it("streams over HTTP as the UI reads it: initial, then an update per change", async () => {
-  const aggregateId = Bun.randomUUIDv7()
-  const a = item(aggregateId, 1, 10)
-  const server = await serve(await app, { router: cartItems.router, statuses: {} }, { log: consoleLogger({ write: () => {} }), port: 0 })
-  const abort = new AbortController()
-  try {
-    const response = await fetch(new URL(`/understanding-eventsourcing/cart-items/stream?aggregateId=${aggregateId}`, server.url), {
-      signal: abort.signal,
-    })
-    // Each Server-Sent Event's data, parsed, as they arrive.
-    const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader()
-    let buffered = ""
-    const next = async (): Promise<unknown> => {
-      for (;;) {
-        const data = buffered.match(/^data: (.*)$/m)
-        if (data) {
-          buffered = buffered.slice(buffered.indexOf(data[0]) + data[0].length)
-          return JSON.parse(data[1]!)
-        }
-        buffered += (await reader.read()).value ?? ""
-      }
-    }
-    expect(await next()).toEqual({ type: "initial", cart: { aggregateId, items: [], totalPrice: 0 } })
-    await scenarios.when(event(ItemAdded, a)).then(events(event(ItemAdded, a)))
-    expect(await next()).toEqual({ type: "update", change: "added", item: row(a) })
-  } finally {
-    abort.abort()
-    await server.stop()
-  }
-})

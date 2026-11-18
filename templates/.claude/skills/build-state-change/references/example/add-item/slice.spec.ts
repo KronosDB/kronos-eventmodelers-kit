@@ -6,6 +6,8 @@ import { CartCreated, ItemAdded } from "../events"
 import { AddItem } from "./command"
 import { addItem } from "."
 
+// The slice's scenarios on the board, one test each, named with the scenario's title, and no other tests.
+
 const scenarios = fixture(testApp([addItem]))
 
 // Every scenario shares the app, so each one uses ids of its own.
@@ -33,15 +35,6 @@ it("adds an item to a cart that exists", async () => {
     .given(event(CartCreated, { aggregateId }), event(ItemAdded, shoes))
     .when(command(AddItem, socks))
     .then(result({ ok: true }), events(event(ItemAdded, socks)))
-})
-
-it("lands once when the same item is added again", async () => {
-  const aggregateId = Bun.randomUUIDv7()
-  const shoes = item(aggregateId)
-  await scenarios
-    .given(event(CartCreated, { aggregateId }), event(ItemAdded, shoes))
-    .when(command(AddItem, shoes))
-    .then(result({ ok: true }), noEvents())
 })
 
 it("refuses a fourth item", async () => {
