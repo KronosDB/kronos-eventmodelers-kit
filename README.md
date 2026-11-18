@@ -63,10 +63,10 @@ store or bus that cannot be reached is answered 503.
 
 ## Versions
 
-kronos-ts from npm: core 0.11.0 (`isConflict`, `isNoHandler`, `isUnavailable`, the typed `App`, every query declares its result),
-kronosdb 0.13.2, postgres 0.21.2, otlp 0.7.4 and `@kronos-ts/test` 0.9.0 (`fixture(app)`, `given` handled live). KronosDB 0.14+; 0.14.0 in
-docker-compose.
-oRPC 2.0.0-beta.36. The reference and the starter name the same versions.
+kronos-ts from npm: core 0.11.2 (`isConflict`, `isNoHandler`, `isUnavailable`, the typed `App`, every query declares its result),
+kronosdb 0.13.4, postgres 0.21.4, otlp 0.7.6 and `@kronos-ts/test` 0.9.2 (`fixture(app)`, `given` handled live). KronosDB 0.15+; 0.15.0 in
+docker-compose, beside Postgres 18.
+oRPC 2.0.0-beta.51, Drizzle 0.45, Bun 1.4.4 (the Dockerfile's image). The reference and the starter name the same versions.
 
 ## The app
 

@@ -337,8 +337,8 @@ export async function describe(routes: { router: AnyRouter; statuses: Readonly<R
     base: { info: { title: "API", version: "0.0.0" } },
     errorStatusMap: { ...COMMON_ERROR_STATUS_MAP, ...statuses },
     // The document says what `problem` sends: `status` added to each declared rejection's data (its `type` is there).
-    customErrorResponseBodySchema: (definitions, status) => {
-      if (!definitions.every((d) => statuses[d.code] !== undefined)) return undefined
+    errorResponseBodySchema: (definitions, status, defaultSchema) => {
+      if (!definitions.every((d) => statuses[d.code] !== undefined)) return defaultSchema()
       const variants = definitions.map(({ code, dataJsonSchema }) => {
         // The rejection's data (`problemsOf`), with the `status` the edge adds beside its `type`: one object, as sent.
         const data = dataJsonSchema as {
@@ -454,16 +454,16 @@ export async function serve(
   const errorStatusMap: Record<string, number> = { ...COMMON_ERROR_STATUS_MAP, ...statuses }
   /** A declared rejection's body: oRPC's error, its data the problem document (`status` added). Anything else: oRPC's own. */
   const problem = (error: AnyORPCError) => {
-    if (!error.defined || statuses[error.code] === undefined) return undefined
+    if (!error.defined || statuses[error.code] === undefined) return error.toJSON()
     const { type, ...rest } = error.data as { type: string }
     return { ...error.toJSON(), data: { type, status: statuses[error.code], ...rest } }
   }
   const rest = new OpenAPIHandler(routes.router, {
     errorStatusMap,
-    customErrorResponseBodyEncoder: problem,
+    errorResponseBodyEncoder: problem,
     // A live view's stream (Server-Sent Events) sends a comment every 5 s between updates. Bun.serve closes a response
     // that writes nothing for 10 s (its idleTimeout), and so does many a proxy; oRPC's own default, 15 s, is too long.
-    toFetchResponse: { eventStream: { keepAlive: { enabled: true, interval: 5_000 } } },
+    toFetchResponse: { eventStream: { keepAlive: { interval: 5_000 } } },
     interceptors: [
       async ({ next, context }) => {
         try {
